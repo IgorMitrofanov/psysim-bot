@@ -2,6 +2,9 @@
 │   ├── __init__.py
 │   ├── main.py          # Точка входа
 │   ├── config.py        # Конфигурация
+│   ├── middlewares/
+│   │   ├── __init__.py
+│   │   └── db.py      # мидлвейр БД - NEW
 │   ├── database/
 │   │   ├── __init__.py
 │   │   ├── models.py    # Модели SQLAlchemy
@@ -11,6 +14,7 @@
 │   │   ├── common.py    # Общие хендлеры
 │   │   ├── feedback.py  # Обратная связь
 │   │   ├── session.py   # Сессии
+│   │   ├── main_menu.py # Основное меню
 │   │   └── profile.py   # Профиль
 │   ├── keyboards/
 │   │   ├── __init__.py
