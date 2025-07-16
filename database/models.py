@@ -40,6 +40,8 @@ class Order(Base):
     date = Column(DateTime, default=datetime.datetime.utcnow)
     description = Column(String)
     price = Column(Integer)
+    status = Column(String, default="pending")
+    external_id = Column(String, nullable=True) 
 
     user = relationship("User", back_populates="orders")
 
