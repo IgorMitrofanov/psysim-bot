@@ -15,7 +15,7 @@ router = Router(name="help")
 
 @router.callback_query(lambda c: c.data.startswith("help"))
 async def help_pages_handler(callback: types.CallbackQuery):
-    from texts.feedback import (
+    from texts.help_texts import (
         HELP_MAIN_TEXT,
         HELP_START_SESSION_TEXT,
         HELP_AFTER_SESSION_TEXT,
@@ -42,10 +42,5 @@ async def help_pages_handler(callback: types.CallbackQuery):
         case "help_faq":
             await callback.message.edit_text(
                 HELP_FAQ_TEXT, 
-                reply_markup=help_back_keyboard()
-            )
-        case _:
-            await callback.message.edit_text(
-                "🔧 Этот раздел ещё в разработке. Следи за обновлениями!",
                 reply_markup=help_back_keyboard()
             )

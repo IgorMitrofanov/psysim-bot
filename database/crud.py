@@ -81,3 +81,16 @@ async def get_or_create_referral_relation(session: AsyncSession, invited_id: int
         referral = Referral(invited_user_id=invited_id, inviter_id=inviter_id)
         session.add(referral)
         await session.commit()
+
+async def add_balance_to_user(session: AsyncSession, user_id: int, amount: int = 1):
+    user = await get_user_by_id(session, user_id)
+    if user:
+        user.balance += amount
+        await session.commit()
+
+
+async def subtract_balance_from_user(session: AsyncSession, user_id: int, amount: int = 1):
+    user = await get_user_by_id(session, user_id)
+    if user and user.balance >= amount:
+        user.balance -= amount
+        await session.commit()

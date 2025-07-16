@@ -9,6 +9,20 @@ from keyboards.builder import (
     session_confirm_menu,
     main_menu
 )
+
+from texts.session_texts import (
+    SESSION_RESISTANCE_SELECT,
+    EMOTION_SELECT_TEXT,
+    FORMAT_SELECT_TEXT,
+    CONFIRM_SESSION_TEXT,
+    SESSION_STARTED_TEXT,
+    SESSION_ENDED_AHEAD_TEXT,
+    NO_USER_TEXT,
+    NO_FREE_SESSIONS_TEXT,
+)
+
+from texts.common import BACK_TO_MENU_TEXT
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.crud import get_user
@@ -18,18 +32,15 @@ router = Router(name="session")
 async def start_session_handler(callback: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     db_user = await get_user(session, telegram_id=callback.from_user.id)
     if not db_user:
-        await callback.message.edit_text("⚠️ Не удалось загрузить данные пользователя.")
+        await callback.message.edit_text(NO_USER_TEXT)
         return
 
     if db_user.active_tariff == "trial" and db_user.sessions_done >= 1:
-        await callback.message.edit_text(
-            "🚫 Бесплатных сессий больше нет.\n"
-            "Пожалуйста, оформите подписку для продолжения."
-        )
+        await callback.message.edit_text(NO_FREE_SESSIONS_TEXT)
         return
 
     await callback.message.edit_text(
-        "🧱 Выбор сопротивления клиента",
+        SESSION_RESISTANCE_SELECT,
         reply_markup=session_resistance_menu()
     )
     await state.set_state(MainMenu.session_resistance)
@@ -41,22 +52,22 @@ async def session_resistance_handler(callback: types.CallbackQuery, state: FSMCo
     if callback.data in ["resistance_medium", "resistance_high"]:
         await state.update_data(resistance=callback.data)
         await callback.message.edit_text(
-            "💥 Выбор эмоционального состояния клиента", 
+            EMOTION_SELECT_TEXT, 
             reply_markup=session_emotion_menu()
         )
         await state.set_state(MainMenu.session_emotion)
     elif callback.data == "end_session":
-        await callback.message.edit_text("Сессия завершена досрочно. Отчёт не будет отправлен.")
+        await callback.message.edit_text(SESSION_ENDED_AHEAD_TEXT)
         await state.clear()
         await callback.message.answer(
-            "Возврат в главное меню",
+            BACK_TO_MENU_TEXT,
             reply_markup=main_menu()
         )
         await state.set_state(MainMenu.choosing)
         return
     elif callback.data == "back_main":
         await callback.message.edit_text(
-            "🔙 Возврат в главное меню", 
+            BACK_TO_MENU_TEXT, 
             reply_markup=main_menu()
         )
         await state.set_state(MainMenu.choosing)
@@ -68,13 +79,13 @@ async def session_emotion_handler(callback: types.CallbackQuery, state: FSMConte
     if callback.data.startswith("emotion_"):
         await state.update_data(emotion=callback.data)
         await callback.message.edit_text(
-            "Выбери формат общения:", 
+            FORMAT_SELECT_TEXT, 
             reply_markup=session_format_menu()
         )
         await state.set_state(MainMenu.session_format)
     elif callback.data == "back_to_resistance":
         await callback.message.edit_text(
-            "🧱 Выбор сопротивления клиента", 
+            SESSION_RESISTANCE_SELECT, 
             reply_markup=session_resistance_menu()
         )
         await state.set_state(MainMenu.session_resistance)
@@ -86,16 +97,13 @@ async def session_format_handler(callback: types.CallbackQuery, state: FSMContex
     if callback.data in ["format_text", "format_audio"]:
         await state.update_data(format=callback.data)
         await callback.message.edit_text(
-            "Готов(а) начать сессию с ИИ-клиентом?\n\n"
-            "⏱ У тебя есть 20 минут на сессию.\n"
-            "📝 По её завершении автоматически придёт супервизорский отчёт.\n"
-            "❗ Если хочешь закончить раньше — нажми «🔚 Завершить сессию». Отчёт при этом не отправится.",
+            CONFIRM_SESSION_TEXT,
             reply_markup=session_confirm_menu()
         )
         await state.set_state(MainMenu.session_confirm)
     elif callback.data == "back_to_emotion":
         await callback.message.edit_text(
-            "💥 Выбор эмоционального состояния клиента", 
+            EMOTION_SELECT_TEXT, 
             reply_markup=session_emotion_menu()
         )
         await state.set_state(MainMenu.session_emotion)
@@ -107,24 +115,18 @@ async def session_confirm_handler(callback: types.CallbackQuery, state: FSMConte
     match callback.data:
         case "start_session":
             data = await state.get_data()
-            await callback.message.edit_text(
-                f"Сессия началась!\n\n"
-                f"Сопротивление: {data.get('resistance')}\n"
-                f"Эмоция: {data.get('emotion')}\n"
-                f"Формат: {data.get('format')}\n\n"
-                "Удачи! 🎉"
-            )
+            await callback.message.edit_text(SESSION_STARTED_TEXT)
         case "end_session":
-            await callback.message.edit_text("Сессия завершена досрочно. Отчёт не будет отправлен.")
+            await callback.message.edit_text(SESSION_ENDED_AHEAD_TEXT)
             await state.clear()
             await callback.message.answer(
-                "Возврат в главное меню", 
+                BACK_TO_MENU_TEXT, 
                 reply_markup=main_menu()
             )
             await state.set_state(MainMenu.choosing)
         case "back_main":
             await callback.message.edit_text(
-                "🔙 Возврат в главное меню", 
+                BACK_TO_MENU_TEXT, 
                 reply_markup=main_menu()
             )
             await state.set_state(MainMenu.choosing)

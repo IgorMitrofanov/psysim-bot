@@ -3,13 +3,10 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 def main_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🧠 Начать сессию", callback_data="start_session")],
-        [InlineKeyboardButton(text="📊 Мои сессии и отчёты", callback_data="my_sessions")],
+        [InlineKeyboardButton(text="🎲 Случайный клиент", callback_data="not_implemented")],
         [InlineKeyboardButton(text="👤 Мой профиль и покупки", callback_data="profile")],
         [InlineKeyboardButton(text="📚 Помощь", callback_data="help")],
         [InlineKeyboardButton(text="💬 Отзывы и предложения", callback_data="feedback_menu")],
-        [InlineKeyboardButton(text="🤝 Партнерская пограмма", callback_data="referral")],
-        [InlineKeyboardButton(text="🎯 Мои цели", callback_data="goals")],
-        [InlineKeyboardButton(text="🏅 Мои достижения", callback_data="achievements")],
     ])
 
 def feedback_menu():
@@ -59,25 +56,25 @@ def session_format_menu():
 
 def session_confirm_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🟣 Начать сессию", callback_data="start_free_session")],
-        [InlineKeyboardButton(text="🔚 Завершить сессию", callback_data="end_free_session")],
+        [InlineKeyboardButton(text="🟣 Начать сессию", callback_data="not_implemented")],
+        [InlineKeyboardButton(text="🔚 Завершить сессию", callback_data="not_implemented")],
         [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_main")]
     ])
 
 def profile_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔁 Продлить подписку", callback_data="extend_subscription")],
-        [InlineKeyboardButton(text="📦 Купить пакет сессий", callback_data="buy_sessions")],
-        [InlineKeyboardButton(text="🧾 Посмотреть тарифы", callback_data="view_tariffs")],
-        [InlineKeyboardButton(text="📊 Мои сессии и отчёты", callback_data="my_sessions")],
-        [InlineKeyboardButton(text="💬 Связаться с поддержкой", callback_data="support_contact")],
+        [InlineKeyboardButton(text="💰 Пополнить баланс", callback_data="not_implemented")],
+        [InlineKeyboardButton(text="📦 Приобрести подписку", callback_data="not_implemented")],
+        [InlineKeyboardButton(text="📊 Мои сессии и отчёты", callback_data="not_implemented")],
+        [InlineKeyboardButton(text="🤝 Партнерская пограмма", callback_data="referral")],
+        [InlineKeyboardButton(text="🎯 Мои цели", callback_data="not_implemented")],
+        [InlineKeyboardButton(text="🏅 Мои достижения", callback_data="not_implemented")],
         [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_main")],
     ])
 
 def referral_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📎 Скопировать ссылку", callback_data="copy_referral_link")],
-        [InlineKeyboardButton(text="📊 Мои приглашённые", callback_data="my_referrals")],
+        [InlineKeyboardButton(text="📊 Мои приглашённые", callback_data="not_implemented")],
         [InlineKeyboardButton(text="❓ Как это работает", callback_data="how_referral_works")],
         [InlineKeyboardButton(text="🔙 В меню", callback_data="back_main")],
     ])
@@ -87,7 +84,6 @@ def help_detail_keyboard():
         [InlineKeyboardButton(text="🔘 Как начать сессию", callback_data="help_start_session")],
         [InlineKeyboardButton(text="📄 Что происходит после сессии", callback_data="help_after_session")],
         [InlineKeyboardButton(text="💡 Часто задаваемые вопросы", callback_data="help_faq")],
-        [InlineKeyboardButton(text="📞 Связаться с поддержкой", callback_data="support_contact")],
         [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_main")]
     ])
 

@@ -11,19 +11,32 @@ from keyboards.builder import (
     feedback_menu
 )
 
+from texts.feedback_texts import (
+    FEEDBACK_MENU_TEXT,
+    LEAVE_FEEDBACK_TEXT,
+    SUGGEST_FEATURE_TEXT,
+    REPORT_ERROR_TEXT,
+    THANK_YOU_FEEDBACK,
+    THANK_YOU_SUGGESTION,
+    THANK_YOU_ERROR,
+    CANCEL_FEEDBACK_POPUP
+)
+
+from texts.common import BACK_TO_MENU_TEXT
+
 router = Router(name="feedback")
 
 @router.callback_query(lambda c: c.data == "feedback_menu")
 async def feedback_menu_handler(callback: types.CallbackQuery):
     await callback.message.edit_text(
-        "💬 Отзывы и предложения\n\n🗣 Нам очень важно твоё мнение!\nВыбери, что хочешь сделать:",
+        FEEDBACK_MENU_TEXT,
         reply_markup=feedback_menu()
     )
 
 @router.callback_query(lambda c: c.data == "leave_feedback", MainMenu.choosing)
 async def leave_feedback_handler(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
-        "✍️ Напиши отзыв в ответ на это сообщение или нажми «🔙 Отмена»:",
+        LEAVE_FEEDBACK_TEXT,
         reply_markup=cancel_feedback_keyboard()
     )
     await state.update_data(feedback_msg_id=callback.message.message_id)
@@ -33,7 +46,7 @@ async def leave_feedback_handler(callback: types.CallbackQuery, state: FSMContex
 @router.callback_query(lambda c: c.data == "suggest_feature", MainMenu.choosing)
 async def suggest_feature_handler(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
-        "💡 Напиши предложение по улучшению или нажми «🔙 Отмена»:",
+        SUGGEST_FEATURE_TEXT,
         reply_markup=cancel_feedback_keyboard()
     )
     await state.update_data(feedback_msg_id=callback.message.message_id)
@@ -43,7 +56,7 @@ async def suggest_feature_handler(callback: types.CallbackQuery, state: FSMConte
 @router.callback_query(lambda c: c.data == "report_error", MainMenu.choosing)
 async def report_error_handler(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
-        "⚠️ Опиши ошибку или нажми «🔙 Отмена»:",
+        REPORT_ERROR_TEXT,
         reply_markup=cancel_feedback_keyboard()
     )
     await state.update_data(feedback_msg_id=callback.message.message_id)
@@ -70,29 +83,29 @@ async def acknowledge_user_feedback(message: types.Message, state: FSMContext, s
 async def handle_feedback(message: types.Message, state: FSMContext):
     await acknowledge_user_feedback(
         message, state,
-        "✅ Спасибо за твой отзыв! Он уже отправлен нашей команде 💛"
+        THANK_YOU_FEEDBACK
     )
 
 @router.message(MainMenu.suggestion)
 async def handle_suggestion(message: types.Message, state: FSMContext):
     await acknowledge_user_feedback(
         message, state,
-        "🧠 Отличная идея! Мы обязательно её рассмотрим 💫"
+        THANK_YOU_SUGGESTION
     )
 
 @router.message(MainMenu.error_report)
 async def handle_error(message: types.Message, state: FSMContext):
     await acknowledge_user_feedback(
         message, state,
-        "🚑 Ошибка зафиксирована. Спасибо, что сообщил(а)."
+        THANK_YOU_ERROR
     )
 
 
 @router.callback_query(lambda c: c.data == "cancel_feedback")
 async def cancel_feedback_handler(callback: types.CallbackQuery, state: FSMContext):
-    await callback.answer("❌ Отменено")
+    await callback.answer(CANCEL_FEEDBACK_POPUP)
     await callback.message.edit_text(
-        "🔙 Возврат в главное меню", 
-        reply_markup=back_to_main_keyboard()
+        FEEDBACK_MENU_TEXT, 
+        reply_markup=feedback_menu()
     )
     await state.set_state(MainMenu.choosing)

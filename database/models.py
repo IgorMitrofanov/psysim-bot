@@ -16,6 +16,8 @@ class User(Base):
     tariff_expires = Column(DateTime)
     language_code = Column(String, nullable=True)
     is_premium = Column(Boolean, default=False)
+    
+    balance = Column(Integer, default=0)
 
     sessions_done = Column(Integer, default=0)
     last_scenario = Column(String, nullable=True)
@@ -52,10 +54,10 @@ class Session(Base):
     user_messages = Column(Text)
     bot_messages = Column(Text)
     report_text = Column(Text)
-
-    theme = Column(String)
-    resistance_level = Column(String)  # Например: "низкий", "средний", "высокий"
-    format = Column(String)            # Например: "текст", "аудио"
+    tokens_spent = Column(Integer)
+    emotial = Column(String) # todo
+    resistance_level = Column(String)  # "средний", "высокий"
+    format = Column(String)            # "текст", "аудио"
 
     user = relationship("User", back_populates="sessions")
 

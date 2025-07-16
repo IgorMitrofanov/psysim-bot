@@ -8,7 +8,7 @@ from database.crud import (
 )
 from keyboards.builder import main_menu
 from states import MainMenu
-from texts.common import get_start_text
+from texts.common import get_start_text, BACK_TO_MENU_TEXT
 from config import logger
 
 router = Router(name="common")
@@ -47,18 +47,20 @@ async def cmd_start(message: types.Message, state: FSMContext, session: AsyncSes
     else:
         logger.debug(f"User exists: {db_user}")
 
+    text = get_start_text(db_user.is_new)
+    
     if db_user.is_new:
         db_user.is_new = False
         await session.commit()
-
-    text = get_start_text(db_user.is_new)
+        
+        
     await message.answer(text, reply_markup=main_menu())
     await state.set_state(MainMenu.choosing)
 
 @router.callback_query(lambda c: c.data == "back_main")
 async def back_to_main_handler(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
-        "🔙 Возврат в главное меню", 
+        BACK_TO_MENU_TEXT, 
         reply_markup=main_menu()
     )
     await state.set_state(MainMenu.choosing)
