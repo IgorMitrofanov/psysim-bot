@@ -10,6 +10,7 @@ from texts.subscription_texts import (
     TARIFF_USER_NOT_FOUND
 )
 import datetime
+from database.models import Order
 
 router = Router(name="subscription")
 
@@ -31,6 +32,13 @@ async def activate_tariff_callback(callback: types.CallbackQuery, session: Async
         "activate_pro": ("pro", 1490, 30),
         "activate_unlimited": ("unlimited", 2490, 30)
     }
+    
+    data = callback.data
+    if data not in tariff_map:
+        await callback.answer("❌ Неизвестный тариф", show_alert=True)
+        return
+    
+    tariff_name, cost, days = tariff_map[data]
 
     data = callback.data
     if data not in tariff_map:
@@ -48,9 +56,21 @@ async def activate_tariff_callback(callback: types.CallbackQuery, session: Async
         await callback.answer(TARIFF_FAIL_FUNDS, show_alert=True)
         return
 
+    # Списываем баланс и обновляем тариф
     user.balance -= cost
-    user.active_tariff = tariff
+    user.active_tariff = tariff_name.lower()  # или как у тебя в User.active_tariff
     user.tariff_expires = datetime.datetime.utcnow() + datetime.timedelta(days=days)
+
+    # Создаём запись о заказе
+    order_description = f"Покупка тарифа «{tariff_name}» на {days} дней"
+    order = Order(
+        user_id=user.id,
+        description=order_description,
+        price=cost,
+        date=datetime.datetime.utcnow()
+    )
+    session.add(order)
+
     await session.commit()
 
     text = TARIFF_SUCCESS_TEMPLATE.format(tariff=tariff.capitalize(), days=days, cost=cost)
