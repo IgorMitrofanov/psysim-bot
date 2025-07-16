@@ -64,7 +64,7 @@ def session_confirm_menu():
 def profile_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="💰 Пополнить баланс", callback_data="not_implemented")],
-        [InlineKeyboardButton(text="📦 Приобрести подписку", callback_data="not_implemented")],
+        [InlineKeyboardButton(text="📦 Приобрести подписку", callback_data="buy")],
         [InlineKeyboardButton(text="📊 Мои сессии и отчёты", callback_data="not_implemented")],
         [InlineKeyboardButton(text="🤝 Партнерская пограмма", callback_data="referral")],
         [InlineKeyboardButton(text="🎯 Мои цели", callback_data="not_implemented")],
@@ -95,4 +95,12 @@ def help_back_keyboard():
 def back_to_main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_main")]
+    ])
+    
+def subscription_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🟢 Старт — 590 ₽ / 7 дней", callback_data="activate_start")],
+        [InlineKeyboardButton(text="🔵 Про — 1490 ₽ / 30 дней", callback_data="activate_pro")],
+        [InlineKeyboardButton(text="⚫ Безлимит — 2490 ₽ / 30 дней", callback_data="activate_unlimited")],
+        [InlineKeyboardButton(text="🔙 В профиль", callback_data="profile")],
     ])
