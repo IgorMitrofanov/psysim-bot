@@ -25,14 +25,21 @@ def cancel_feedback_keyboard():
         [InlineKeyboardButton(text="🔙 Отмена", callback_data="cancel_feedback")]
     ])
 
-def free_session_resistance_menu():
+def end_session_button():
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔚 Завершить сессию", callback_data="end_session")]
+        ]
+    )
+
+def session_resistance_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🟡 Среднее", callback_data="resistance_medium")],
         [InlineKeyboardButton(text="🔴 Высокое", callback_data="resistance_high")],
         [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_main")]
     ])
 
-def free_session_emotion_menu():
+def session_emotion_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="😢 Тревожный и ранимый", callback_data="emotion_anxious")],
         [InlineKeyboardButton(text="😡 Агрессивно настроенный", callback_data="emotion_aggressive")],
@@ -43,14 +50,14 @@ def free_session_emotion_menu():
         [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_resistance")]
     ])
 
-def free_session_format_menu():
+def session_format_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="💬 Текст", callback_data="format_text")],
         [InlineKeyboardButton(text="🎧 Аудио", callback_data="format_audio")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_emotion")]
     ])
 
-def free_session_confirm_menu():
+def session_confirm_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🟣 Начать сессию", callback_data="start_free_session")],
         [InlineKeyboardButton(text="🔚 Завершить сессию", callback_data="end_free_session")],

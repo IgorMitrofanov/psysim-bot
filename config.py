@@ -1,4 +1,3 @@
-# bot/config.py
 import os
 from dotenv import load_dotenv
 import logging
@@ -7,10 +6,6 @@ from aiogram.enums import ParseMode
 
 load_dotenv()
 
-# --- Logging ---
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 # --- Config ---
 class Config:
     BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -18,9 +13,16 @@ class Config:
     AI_API_KEY = os.getenv("AI_API_KEY")
     DEFAULT_MODEL = os.getenv("DEFAULT_MODEL")
     SESSION_LENGTH_MINUTES = os.getenv("SESSION_LENGTH_MINUTES")
-    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-    
+    LOG_LEVEL = int(os.getenv("LOG_LEVEL", 20))  # 20 = INFO, 10 = DEBUG
+
 config = Config()
+
+# --- Logging ---
+logging.basicConfig(
+    level=config.LOG_LEVEL,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger("main-logger")
 
 # --- Bot Default Properties ---
 DEFAULT_BOT_PROPERTIES = DefaultBotProperties(parse_mode=ParseMode.HTML)
