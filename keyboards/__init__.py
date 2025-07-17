@@ -1,3 +1,4 @@
+
 from .builder import (
     main_menu,
     feedback_menu,
@@ -11,7 +12,8 @@ from .builder import (
     referral_keyboard,
     help_detail_keyboard,
     help_back_keyboard,
-    back_to_main_keyboard
+    back_to_main_keyboard,
+    subscription_keyboard
 )
 
 __all__ = [
@@ -27,5 +29,6 @@ __all__ = [
     'referral_keyboard',
     'help_detail_keyboard',
     'help_back_keyboard',
-    'back_to_main_keyboard'
+    'back_to_main_keyboard',
+    'subscription_keyboard'
 ]

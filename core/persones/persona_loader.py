@@ -2,7 +2,7 @@ import os
 import yaml
 from typing import Dict, Any
 
-PERSONAS_DIR = "C:/Users/igormitrofanov/psysim-bot/persones" 
+PERSONAS_DIR = "persones" 
 
 def validate_persona(data: Dict[str, Any]) -> bool:
     required_top_keys = {

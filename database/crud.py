@@ -26,30 +26,44 @@ async def get_user_by_referral_code(session: AsyncSession, code: str) -> User | 
 from datetime import datetime
 import json
 
-async def save_session(session: AsyncSession, user_id: int, persona: PersonaBehavior, state_data: dict):
+async def save_session(
+    session: AsyncSession,
+    user_id: int,
+    persona: PersonaBehavior,
+    state_data: dict
+) -> bool:
+    """Сохраняет сессию в БД с полной информацией"""
     started_at = state_data.get("session_start")
     if isinstance(started_at, str):
         started_at = datetime.fromisoformat(started_at)
 
+    # Находим последнюю активную сессию пользователя
+    stmt = select(Session).where(
+        Session.user_id == user_id,
+        Session.is_active == True
+    ).order_by(Session.started_at.desc()).limit(1)
+    
+    result = await session.execute(stmt)
+    db_session = result.scalar_one_or_none()
+    
+    if not db_session:
+        return False
+    
+    # Обновляем данные сессии
     user_msgs = [msg['content'] for msg in persona.get_history() if msg['role'] == 'user']
     bot_msgs = [msg['content'] for msg in persona.get_history() if msg['role'] == 'assistant']
-
-    db_session = Session(
-        user_id=user_id,
-        started_at=started_at,
-        ended_at=datetime.utcnow(),
-        user_messages=json.dumps(user_msgs, ensure_ascii=False),
-        bot_messages=json.dumps(bot_msgs, ensure_ascii=False),
-        emotional=state_data.get("emotion"),
-        resistance_level=state_data.get("resistance"),
-        format=state_data.get("format"),
-        is_free=(state_data.get("is_trial", False)),  # если нужно
-        # report_text — можно заполнить по итогам сессии, если есть
-        # tokens_spent — если считаешь
-    )
-
-    session.add(db_session)
+    
+    db_session.ended_at = datetime.utcnow()
+    db_session.is_active = False
+    db_session.user_messages = json.dumps(user_msgs, ensure_ascii=False)
+    db_session.bot_messages = json.dumps(bot_msgs, ensure_ascii=False)
+    db_session.emotional = state_data.get("emotion")
+    db_session.resistance_level = state_data.get("resistance")
+    db_session.format = state_data.get("format")
+    db_session.is_free = state_data.get("is_trial", False)
+    
     await session.commit()
+    return True
 
 async def create_user(
     session: AsyncSession,

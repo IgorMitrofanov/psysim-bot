@@ -53,9 +53,3 @@ async def my_referrals_handler(callback: types.CallbackQuery, session: AsyncSess
 async def how_referral_works_handler(callback: types.CallbackQuery):
     await callback.message.edit_text(HOW_REFERRAL_WORKS_TEXT, reply_markup=referral_keyboard())
 
-@router.callback_query(lambda c: c.data == "copy_referral_link")
-async def copy_referral_link_handler(callback: types.CallbackQuery, session: AsyncSession):
-    db_user = await get_user(session, telegram_id=callback.from_user.id)
-    bot_name = (await callback.bot.get_me()).username
-    ref_link = f"https://t.me/{bot_name}?start=ref_{db_user.id}"
-    await callback.answer(COPY_LINK_ALERT_TEMPLATE.format(ref_link=ref_link), show_alert=True)

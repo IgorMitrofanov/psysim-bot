@@ -50,16 +50,20 @@ def session_emotion_menu():
 def session_format_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="💬 Текст", callback_data="format_text")],
-        [InlineKeyboardButton(text="🎧 Аудио", callback_data="format_audio")],
+        [InlineKeyboardButton(text="🎧 Аудио", callback_data="not_implemented")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_emotion")]
     ])
 
 def session_confirm_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🟣 Начать сессию", callback_data="session_confirm_start")],
-        [InlineKeyboardButton(text="🔚 Завершить сессию", callback_data="not_implemented")],
         [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_main")]
     ])
+    
+def session_menu():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔚 Завершить сессию", callback_data="not_implemented")],
+    ])   
 
 def profile_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -104,3 +108,12 @@ def subscription_keyboard():
         [InlineKeyboardButton(text="⚫ Безлимит — 2490 ₽ / 30 дней", callback_data="activate_unlimited")],
         [InlineKeyboardButton(text="🔙 В профиль", callback_data="profile")],
     ])
+
+
+def persona_selection_menu(personas: list[str]) -> InlineKeyboardMarkup:
+    buttons = [
+        [InlineKeyboardButton(text=f"🧍 {p}", callback_data=f"persona_{p}")]
+        for p in personas
+    ]
+    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_format")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)

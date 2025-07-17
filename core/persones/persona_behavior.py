@@ -17,30 +17,42 @@ class PersonaBehavior:
         self.min_delay = guide.get("reply_delay_sec", {}).get("min", 0)
         self.max_delay = guide.get("reply_delay_sec", {}).get("max", 2)
 
-        self.min_chars = guide.get("message_length", {}).get("min_chars", 30)
-        self.max_chars = guide.get("message_length", {}).get("max_chars", 200)
-
     async def send(self, user_message: str) -> str:
         self.history.append({"role": "user", "content": user_message})
 
-        # Создаём system prompt с текущими состояниями
-        system_prompt = build_prompt(
-            self.persona_data,
-            resistance_level=self.resistance_level,
-            emotional_state=self.emotional_state,
-        )
-
-        # Собираем prompt (последние 5 сообщений + system)
-        prompt = [{"role": "system", "content": system_prompt}] + self.history[-5:]
+        # Строим system prompt только один раз
+        if not any(msg["role"] == "system" for msg in self.history):
+            self.history.insert(0, {
+                "role": "system",
+                "content": build_prompt(
+                    self.persona_data,
+                    resistance_level=self.resistance_level,
+                    emotional_state=self.emotional_state,
+                )
+            })
 
         # Задержка перед ответом
         delay = random.uniform(self.min_delay, self.max_delay)
         await asyncio.sleep(delay)
 
-        # Получаем ответ
-        reply = await get_response(prompt)
+        # Подготавливаем prompt: только последние 6 сообщений
+        trimmed = self.history[-6:] if len(self.history) > 6 else self.history
 
-        # Добавляем ответ в историю
+        # Подсаливаем: переименовываем user-сообщения
+        salted_prompt = []
+        for msg in trimmed:
+            if msg["role"] == "user":
+                salted_prompt.append({
+                    "role": "user",
+                    "content": f"Теравет говорит: {msg['content']}"
+                })
+            else:
+                salted_prompt.append(msg)
+
+        # Получаем ответ от LLM
+        reply = await get_response(salted_prompt)
+
+        # Сохраняем обычный ответ в историю
         self.history.append({"role": "assistant", "content": reply})
 
         return reply
@@ -51,6 +63,7 @@ class PersonaBehavior:
             self.resistance_level = resistance_level
         if emotional_state:
             self.emotional_state = emotional_state
+            
 
     def get_history(self):
         """Возвращает историю в виде списка сообщений."""

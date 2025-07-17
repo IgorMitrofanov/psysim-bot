@@ -53,6 +53,9 @@ class Session(Base):
     started_at = Column(DateTime, default=datetime.datetime.utcnow)
     ended_at = Column(DateTime, nullable=True) 
 
+    expires_at = Column(DateTime)
+    is_active = Column(Boolean, default=True)  # Флаг активности сессии
+    
     is_free = Column(Boolean, default=False)
     user_messages = Column(Text)  # Хранить всю переписку пользователя (например, JSON или просто текст)
     bot_messages = Column(Text)   # Хранить все ответы бота
