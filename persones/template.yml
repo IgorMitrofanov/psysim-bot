@@ -1,0 +1,107 @@
+persona:
+  name:
+  age:
+  gender:
+  occupation:
+  marital_status:
+  living_situation:
+  education:
+  socioeconomic_status:
+
+background: |
+  # краткая история семьи, школы, травм, службы, текущей жизни
+
+goal_session: |
+  # цели на ближайшую сессию: регуляция, доверие, инсайт и т.п.
+
+trauma_history:
+  -  # краткое описание ключевых травм (1–3)
+
+current_symptoms:
+  aggression:
+  hypervigilance:
+  flashbacks:
+  avoidance:
+  distrust:
+  sleep_disturbance:
+  irritability:
+  substance_use:
+
+personality_profile:
+  attachment_style:
+  personality_organization:
+
+  big_five:
+    openness:
+    conscientiousness:
+    extraversion:
+    agreeableness:
+    neuroticism:
+
+  predominant_schemas:
+    -
+    -
+
+  defense_mechanisms:
+    primitive_isolation:
+    acting_out:
+    intellectualization:
+    suppression:
+
+  coping_style:
+    -
+    -
+
+  interpersonal_style:
+    dominance:
+    warmth:
+
+  values:
+    -
+    -
+
+  strengths_and_resources:
+    -
+    -
+
+  interests_hobbies:
+    -
+    -
+
+tone:
+  baseline: |
+    # стиль речи, лексика, особенности взаимодействия
+  defensive_reaction: |
+    # на что реагирует раздражением, как выражает
+
+behaviour_rules:
+  -  # правило поведения, например: "При 2 эмпатических репликах — выдает уязвимость"
+  -
+
+self_reports:
+  -
+  -
+
+escalation:
+  -
+  -
+
+triggers:
+  -
+  -
+
+forbidden_topics:
+  -
+  -
+
+interaction_guide:
+  message_length:
+    min_chars:
+    max_chars:
+  reply_delay_sec:
+    min:
+    max:
+  use_emojis:
+
+resistance_level:
+emotional_state:
