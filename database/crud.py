@@ -2,7 +2,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from .models import User, Referral
 from sqlalchemy.exc import NoResultFound
-
+from core.persones.persona_behavior import PersonaBehavior
+from database.models import Session
 
 async def get_user(session: AsyncSession, telegram_id: int) -> User | None:
     stmt = select(User).where(User.telegram_id == telegram_id)
@@ -21,6 +22,34 @@ async def get_user_by_referral_code(session: AsyncSession, code: str) -> User | 
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
 
+
+from datetime import datetime
+import json
+
+async def save_session(session: AsyncSession, user_id: int, persona: PersonaBehavior, state_data: dict):
+    started_at = state_data.get("session_start")
+    if isinstance(started_at, str):
+        started_at = datetime.fromisoformat(started_at)
+
+    user_msgs = [msg['content'] for msg in persona.get_history() if msg['role'] == 'user']
+    bot_msgs = [msg['content'] for msg in persona.get_history() if msg['role'] == 'assistant']
+
+    db_session = Session(
+        user_id=user_id,
+        started_at=started_at,
+        ended_at=datetime.utcnow(),
+        user_messages=json.dumps(user_msgs, ensure_ascii=False),
+        bot_messages=json.dumps(bot_msgs, ensure_ascii=False),
+        emotional=state_data.get("emotion"),
+        resistance_level=state_data.get("resistance"),
+        format=state_data.get("format"),
+        is_free=(state_data.get("is_trial", False)),  # если нужно
+        # report_text — можно заполнить по итогам сессии, если есть
+        # tokens_spent — если считаешь
+    )
+
+    session.add(db_session)
+    await session.commit()
 
 async def create_user(
     session: AsyncSession,

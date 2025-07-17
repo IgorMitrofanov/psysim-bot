@@ -51,15 +51,18 @@ class Session(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     started_at = Column(DateTime, default=datetime.datetime.utcnow)
-    ended_at = Column(DateTime, nullable=True)
+    ended_at = Column(DateTime, nullable=True) 
+
     is_free = Column(Boolean, default=False)
-    user_messages = Column(Text)
-    bot_messages = Column(Text)
-    report_text = Column(Text)
-    tokens_spent = Column(Integer)
-    emotial = Column(String) # todo
-    resistance_level = Column(String)  # "средний", "высокий"
-    format = Column(String)            # "текст", "аудио"
+    user_messages = Column(Text)  # Хранить всю переписку пользователя (например, JSON или просто текст)
+    bot_messages = Column(Text)   # Хранить все ответы бота
+
+    report_text = Column(Text, nullable=True)  # Итоговый отчёт по сессии (если есть)
+    tokens_spent = Column(Integer, nullable=True)  # Если считаешь расход токенов
+
+    emotional = Column(String, nullable=True)  # Вместо "emotial" — исправил опечатку
+    resistance_level = Column(String, nullable=True)  # "средний", "высокий"
+    format = Column(String, nullable=True)            # "текст", "аудио"
 
     user = relationship("User", back_populates="sessions")
 

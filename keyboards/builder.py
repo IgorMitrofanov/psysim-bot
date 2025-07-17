@@ -2,7 +2,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 def main_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🧠 Начать сессию", callback_data="start_session")],
+        [InlineKeyboardButton(text="🧠 Начать сессию", callback_data="main_start_session")],
         [InlineKeyboardButton(text="🎲 Случайный клиент", callback_data="not_implemented")],
         [InlineKeyboardButton(text="👤 Мой профиль и покупки", callback_data="profile")],
         [InlineKeyboardButton(text="📚 Помощь", callback_data="help")],
@@ -56,7 +56,7 @@ def session_format_menu():
 
 def session_confirm_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🟣 Начать сессию", callback_data="not_implemented")],
+        [InlineKeyboardButton(text="🟣 Начать сессию", callback_data="session_confirm_start")],
         [InlineKeyboardButton(text="🔚 Завершить сессию", callback_data="not_implemented")],
         [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_main")]
     ])
