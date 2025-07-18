@@ -24,7 +24,7 @@ class User(Base):
 
     referred_by_id = Column(Integer, ForeignKey('users.id'), nullable=True)  # ID пригласившего
     referral_code = Column(String, unique=True, index=True)               # Мой реф. код
-    bonus_balance = Column(Integer, default=0)                            # Кол-во бонусов
+    bonus_balance = Column(Integer, default=1)                            # Кол-во бонусов
 
     # Relationships
     orders = relationship("Order", back_populates="user")
@@ -90,3 +90,4 @@ class Referral(Base):
     bonus_given = Column(Boolean, default=False)
 
     inviter = relationship("User", back_populates="referrals", foreign_keys=[inviter_id])
+    invited_user = relationship("User", foreign_keys=[invited_user_id])

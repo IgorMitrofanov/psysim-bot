@@ -7,7 +7,8 @@ from keyboards.builder import (
     session_format_menu,
     session_confirm_menu,
     main_menu,
-    persona_selection_menu
+    persona_selection_menu,
+    subscription_keyboard_when_sessions_left
 )
 from datetime import datetime, timedelta
 from config import config
@@ -129,10 +130,6 @@ async def main_start_session_handler(
         await callback.message.edit_text(NO_USER_TEXT)
         return
 
-    if db_user.active_tariff == "trial" and db_user.sessions_done >= 1:
-        await callback.message.edit_text(NO_FREE_SESSIONS_TEXT)
-        return
-
     await callback.message.edit_text(
         SESSION_RESISTANCE_SELECT,
         reply_markup=session_resistance_menu()
@@ -189,6 +186,22 @@ async def session_confirm_handler(
                 emotional_state=emo_lvl,
                 format=format
             )
+            
+            
+            db_user = await get_user(session, telegram_id=callback.from_user.id)
+            if not db_user:
+                await callback.message.edit_text(NO_USER_TEXT)
+                return
+
+            # Пытаемся списать квоту или бонус
+            used = await session_manager.use_session_quota_or_bonus(session, db_user)
+            if not used:
+                # На всякий случай (если логика где-то сбоит)
+                await callback.message.answer(
+                    "⚠️ Ошибка списания сессии. Пожалуйста, попробуйте позже или обновите тариф.",
+                    reply_markup=subscription_keyboard_when_sessions_left()
+                )
+                return
             
             # Создаем сессию в БД
             session_id = await session_manager.start_session(
@@ -342,19 +355,20 @@ async def random_session_handler(
         await callback.message.edit_text(NO_USER_TEXT)
         return
 
-    if db_user.active_tariff == "trial" and db_user.sessions_done >= 1:
-        await callback.message.edit_text(NO_FREE_SESSIONS_TEXT)
+    # Списание квоты или бонуса
+    used = await session_manager.use_session_quota_or_bonus(session, db_user)
+    if not used:
+        await callback.message.edit_text(
+            "⚠️ Ошибка списания сессии. Попробуйте позже.",
+            reply_markup=subscription_keyboard_when_sessions_left()
+        )
         return
 
     # 🎲 Рандомные значения
     resistance_options = ["средний", "высокий"]
     emotion_options = [
-        "тревожный и ранимый",
-        "агрессивный",
-        "холодный и отстранённый",
-        "в шоке",
-        "на грани срыва",
-        "поверхностно весёлый"
+        "тревожный и ранимый", "агрессивный", "холодный и отстранённый",
+        "в шоке", "на грани срыва", "поверхностно весёлый"
     ]
 
     personas = load_personas()
@@ -363,7 +377,6 @@ async def random_session_handler(
         await callback.message.edit_text("Нет доступных персонажей.")
         return
 
-    # ⚙️ Выбираем случайные параметры
     resistance = random.choice(resistance_options)
     emotion = random.choice(emotion_options)
     persona_name = random.choice(persona_names)
@@ -392,5 +405,4 @@ async def random_session_handler(
     )
 
     await callback.message.edit_text(RANDOM_SESSION_STARTED_TEXT)
-    
     await state.set_state(MainMenu.in_session)

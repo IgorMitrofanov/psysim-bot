@@ -5,12 +5,13 @@ from aiogram import Bot
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from database.models import Session as DBSession
+from database.crud import get_sessions_today_count
 from states import MainMenu
 from keyboards.builder import main_menu
 from texts.common import BACK_TO_MENU_TEXT
 from config import logger 
 import json
-from config import config 
+from config import config
 
 class SessionManager:
     def __init__(self, bot: Bot):
@@ -25,8 +26,8 @@ class SessionManager:
         user_id: int
     ) -> int:
         """Создает новую сессию в БД и возвращает её ID"""
-        session_length = 6 # config.SESSION_LENGTH_MINUTES
-        expires_at = datetime.utcnow() + timedelta(minutes=session_length)
+        session_length = config.SESSION_LENGTH_MINUTES
+        expires_at = datetime.utcnow() + timedelta(minutes=int(session_length))
         
         db_sess = DBSession(
             user_id=user_id,
@@ -91,7 +92,7 @@ class SessionManager:
             logger.info(f"Session check started for user {user_id}. Time left: {int(minutes)}m {int(seconds)}s")
             
             # Отправляем предупреждение за 5 минут до конца
-            warning_time = expires_at - timedelta(minutes=config.WARNING_BEFORE_END_MINUTES)
+            warning_time = expires_at - timedelta(minutes=int(config.WARNING_BEFORE_END_MINUTES))
             time_to_warning = (warning_time - datetime.utcnow()).total_seconds()
             
             if time_to_warning > 0:
@@ -277,3 +278,38 @@ class SessionManager:
         self.active_checks.clear()
         self.message_history.clear()
         self.session_ended.clear()
+        
+        
+    async def can_start_session(self, db_session: AsyncSession, user) -> bool:
+        """Проверяет, можно ли запустить сессию (по тарифу и бонусам)"""
+        quota = config.TARIFF_QUOTAS.get(user.active_tariff, 0)
+        sessions_today = await get_sessions_today_count(db_session, user.id)
+
+        if sessions_today < quota:
+            # Есть доступная квота, списываем квоту (фактически просто разрешаем старт)
+            return True
+        elif user.bonus_balance > 0:
+            # Используем бонусы
+            return True
+        else:
+            return False
+
+    async def use_session_quota_or_bonus(self, db_session: AsyncSession, user) -> bool:
+        """
+        Списывает 1 сессию из квоты (логически) или 1 бонус.
+        Возвращает True если списание успешно, False если нет ресурсов.
+        """
+        quota = config.TARIFF_QUOTAS.get(user.active_tariff, 0)
+        sessions_today = await get_sessions_today_count(db_session, user.id)
+
+        if sessions_today < quota:
+            # Списываем из квоты (в квоте — просто считаем, квота не хранится отдельно)
+            # Просто увеличиваем счетчик сессий при создании, здесь ничего менять не надо
+            return True
+        elif user.bonus_balance > 0:
+            # Списываем бонус
+            user.bonus_balance -= 1
+            await db_session.commit()
+            return True
+        else:
+            return False

@@ -45,7 +45,7 @@ async def my_referrals_handler(callback: types.CallbackQuery, session: AsyncSess
     if not referrals:
         await callback.answer(NO_REFERRALS_TEXT, show_alert=True)
         return
-
+    
     text = referral_stats_text(referrals)
     await callback.message.edit_text(text, reply_markup=referral_keyboard())
 

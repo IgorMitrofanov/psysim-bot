@@ -78,7 +78,7 @@ def profile_keyboard():
 
 def referral_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📊 Мои приглашённые", callback_data="not_implemented")],
+        [InlineKeyboardButton(text="📊 Мои приглашённые", callback_data="my_referrals")],
         [InlineKeyboardButton(text="❓ Как это работает", callback_data="how_referral_works")],
         [InlineKeyboardButton(text="🔙 В меню", callback_data="back_main")],
     ])
@@ -107,6 +107,14 @@ def subscription_keyboard():
         [InlineKeyboardButton(text="🔵 Про — 1490 ₽ / 30 дней", callback_data="activate_pro")],
         [InlineKeyboardButton(text="⚫ Безлимит — 2490 ₽ / 30 дней", callback_data="activate_unlimited")],
         [InlineKeyboardButton(text="🔙 В профиль", callback_data="profile")],
+    ])
+
+def subscription_keyboard_when_sessions_left():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🟢 Старт — 590 ₽ / 7 дней", callback_data="activate_start")],
+        [InlineKeyboardButton(text="🔵 Про — 1490 ₽ / 30 дней", callback_data="activate_pro")],
+        [InlineKeyboardButton(text="⚫ Безлимит — 2490 ₽ / 30 дней", callback_data="activate_unlimited")],
+        [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_main")],
     ])
 
 

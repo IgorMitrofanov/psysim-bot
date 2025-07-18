@@ -37,14 +37,18 @@ def referral_text(ref_link: str, bonus_balance: int) -> str:
 
 
 def referral_stats_text(referrals: list) -> str:
-    lines = [
-        f"📊 <b>Приглашённые:</b> {len(referrals)} чел.",
-        "",
-    ]
+    lines = [f"📊 Приглашённые: {len(referrals)} чел.\n"]
+    
     for r in referrals:
+        username = r.invited_user.username if r.invited_user and r.invited_user.username else "—"
         status = "✅ Оплатил" if r.has_paid else "⏳ Не оплатил"
-        lines.append(f"— <code>{r.invited_user_id}</code> • {status}")
+        joined_at = r.joined_at.strftime("%d.%m.%Y") if r.joined_at else "—"
+        
+        lines.append(f"{status} — <b>{username}</b> (пригласил {joined_at})")
+    
     return "\n".join(lines)
+
+
 
 
 def get_start_text(is_new: bool):

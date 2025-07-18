@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from .models import User, Referral
 from sqlalchemy.exc import NoResultFound
 from core.persones.persona_behavior import PersonaBehavior
@@ -23,6 +24,21 @@ async def get_user_by_referral_code(session: AsyncSession, code: str) -> User | 
     return result.scalar_one_or_none()
 
 
+from sqlalchemy import func
+
+async def get_sessions_today_count(db_session: AsyncSession, user_id: int) -> int:
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    count_query = await db_session.execute(
+        select(func.count(Session.id)).where(
+            Session.user_id == user_id,
+            Session.started_at >= today_start
+        )
+    )
+    count = count_query.scalar_one()
+    return count or 0
+
+
+
 from datetime import datetime
 import json
 
@@ -31,9 +47,12 @@ async def get_user_by_referral_code(session: AsyncSession, code: str) -> User | 
     result = await session.execute(select(User).where(User.referral_code == code))
     return result.scalar_one_or_none()
 
-async def get_user_referrals(session: AsyncSession, user_id: int) -> list[User]:
-    """Получение списка рефералов пользователя"""
-    stmt = select(Referral).where(Referral.inviter_id == user_id)
+async def get_user_referrals(session: AsyncSession, inviter_id: int):
+    stmt = (
+        select(Referral)
+        .where(Referral.inviter_id == inviter_id)
+        .options(selectinload(Referral.invited_user))  # eager load invited_user
+    )
     result = await session.execute(stmt)
     referrals = result.scalars().all()
     return referrals
