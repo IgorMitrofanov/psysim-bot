@@ -90,28 +90,12 @@ async def create_user(
         language_code=language_code,
         is_premium=is_premium,
         is_new=True,
-        referred_by=referred_by_id,
+        referred_by_id=referred_by_id,
         referral_code=referral_code,
     )
     session.add(user)
     await session.commit()
-
-    # Создание записи в таблице referrals
-    if referred_by_id:
-        referral = Referral(
-            invited_user_id=user.id,
-            inviter_id=referred_by_id,
-        )
-        session.add(referral)
-        await session.commit()
-
     return user
-
-
-async def get_referrals_by_user(session: AsyncSession, user_id: int) -> list[Referral]:
-    stmt = select(Referral).where(Referral.inviter_id == user_id)
-    result = await session.execute(stmt)
-    return result.scalars().all()
 
 
 async def add_bonus_to_user(session: AsyncSession, user_id: int, amount: int = 1):

@@ -11,6 +11,7 @@ from texts.subscription_texts import (
 )
 import datetime
 from database.models import Order
+from services.referral_manager import process_referral_bonus_after_payment
 
 router = Router(name="subscription")
 
@@ -70,6 +71,9 @@ async def activate_tariff_callback(callback: types.CallbackQuery, session: Async
         date=datetime.datetime.utcnow()
     )
     session.add(order)
+
+    await process_referral_bonus_after_payment(session, user.id)
+
 
     await session.commit()
 

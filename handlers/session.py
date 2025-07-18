@@ -26,7 +26,7 @@ from texts.session_texts import (
     NO_FREE_SESSIONS_TEXT,
 )
 from texts.common import BACK_TO_MENU_TEXT
-from core.session_manager import SessionManager
+from services.session_manager import SessionManager
 router = Router(name="session")
 
 # --- Обработка сообщений во время сессии ---

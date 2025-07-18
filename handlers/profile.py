@@ -2,7 +2,7 @@ from aiogram import Router, types
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.crud import get_user, get_referrals_by_user
+from database.crud import get_user, get_user_referrals
 from keyboards.builder import profile_keyboard, referral_keyboard
 from texts.common import profile_text, referral_text, referral_stats_text
 from config import logger

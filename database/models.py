@@ -22,7 +22,7 @@ class User(Base):
     sessions_done = Column(Integer, default=0)
     last_scenario = Column(String, nullable=True)
 
-    referred_by = Column(Integer, ForeignKey('users.id'), nullable=True)  # ID пригласившего
+    referred_by_id = Column(Integer, ForeignKey('users.id'), nullable=True)  # ID пригласившего
     referral_code = Column(String, unique=True, index=True)               # Мой реф. код
     bonus_balance = Column(Integer, default=0)                            # Кол-во бонусов
 

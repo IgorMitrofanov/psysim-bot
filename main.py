@@ -7,7 +7,7 @@ from config import config, DEFAULT_BOT_PROPERTIES, logger
 from database.models import Base
 from handlers import routers
 from middlewares.db import DBSessionMiddleware
-from core.session_manager import SessionManager
+from services.session_manager import SessionManager
 
 async def init_db():
     logger.debug("database init")
@@ -19,7 +19,7 @@ async def init_db():
 async def main():
     engine = await init_db()
     bot = Bot(token=config.BOT_TOKEN, default=DEFAULT_BOT_PROPERTIES)  
-    dp = Dispatcher(storage=MemoryStorage())
+    dp = Dispatcher(storage=MemoryStorage()) # заменить на реддис например
     
     sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
     dp.message.middleware(DBSessionMiddleware(sessionmaker))
