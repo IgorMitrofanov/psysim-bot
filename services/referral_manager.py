@@ -75,6 +75,7 @@ async def handle_referral_bonus(session: AsyncSession, new_user: User, referrer:
             bonus_given=False
         )
         session.add(referral)
+        await session.commit()
 
         # Уведомляем
         username_info = f"@{new_user.username}" if new_user.username else f"пользователь (ID: {new_user.telegram_id})"
