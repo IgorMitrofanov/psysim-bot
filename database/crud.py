@@ -26,6 +26,18 @@ async def get_user_by_referral_code(session: AsyncSession, code: str) -> User | 
 from datetime import datetime
 import json
 
+async def get_user_by_referral_code(session: AsyncSession, code: str) -> User | None:
+    """Поиск пользователя по реферальному коду"""
+    result = await session.execute(select(User).where(User.referral_code == code))
+    return result.scalar_one_or_none()
+
+async def get_user_referrals(session: AsyncSession, user_id: int) -> list[User]:
+    """Получение списка рефералов пользователя"""
+    stmt = select(Referral).where(Referral.inviter_id == user_id)
+    result = await session.execute(stmt)
+    referrals = result.scalars().all()
+    return referrals
+
 async def save_session(
     session: AsyncSession,
     user_id: int,
@@ -33,23 +45,21 @@ async def save_session(
     state_data: dict
 ) -> bool:
     """Сохраняет сессию в БД с полной информацией"""
-    started_at = state_data.get("session_start")
-    if isinstance(started_at, str):
-        started_at = datetime.fromisoformat(started_at)
+    session_id = state_data.get("session_id")
+    if not session_id:
+        return False
 
-    # Находим последнюю активную сессию пользователя
     stmt = select(Session).where(
-        Session.user_id == user_id,
-        Session.is_active == True
-    ).order_by(Session.started_at.desc()).limit(1)
-    
+        Session.id == session_id,
+        Session.user_id == user_id
+    )
     result = await session.execute(stmt)
     db_session = result.scalar_one_or_none()
     
     if not db_session:
         return False
     
-    # Обновляем данные сессии
+    # Сохраняем историю из persona
     user_msgs = [msg['content'] for msg in persona.get_history() if msg['role'] == 'user']
     bot_msgs = [msg['content'] for msg in persona.get_history() if msg['role'] == 'assistant']
     

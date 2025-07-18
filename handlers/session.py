@@ -26,7 +26,7 @@ from texts.session_texts import (
     NO_FREE_SESSIONS_TEXT,
 )
 from texts.common import BACK_TO_MENU_TEXT
-
+from core.session_manager import SessionManager
 router = Router(name="session")
 
 # --- Обработка сообщений во время сессии ---
@@ -35,7 +35,7 @@ async def session_interaction_handler(
     message: types.Message, 
     state: FSMContext,
     session: AsyncSession,
-    session_manager
+    session_manager: SessionManager
 ):
     data = await state.get_data()
     persona: PersonaBehavior = data.get("persona")
@@ -51,9 +51,44 @@ async def session_interaction_handler(
         await state.set_state(MainMenu.choosing)
         return
 
+    # Добавляем сообщение пользователя в историю
+    await session_manager.add_message_to_history(
+        message.from_user.id,
+        message.text,
+        is_user=True
+    )
+
     # Обработка сообщения
     response = await persona.send(message.text)
     await message.answer(response)
+    
+    # Добавляем ответ бота в историю
+    await session_manager.add_message_to_history(
+        message.from_user.id,
+        response,
+        is_user=False
+    )
+
+@router.callback_query(MainMenu.in_session, lambda c: c.data == "end_session")
+async def manual_end_session_handler(
+    callback: types.CallbackQuery, 
+    state: FSMContext,
+    session: AsyncSession,
+    session_manager: SessionManager
+):
+    data = await state.get_data()
+    session_id = data.get("session_id")
+    
+    if session_id:
+        await session_manager.end_session(callback.from_user.id, session_id, session)
+    
+    await callback.message.edit_text(SESSION_ENDED_AHEAD_TEXT)
+    await state.clear()
+    await callback.message.answer(
+        BACK_TO_MENU_TEXT,
+        reply_markup=main_menu()
+    )
+    await state.set_state(MainMenu.choosing)
 
 # --- Старт сессии ---
 @router.callback_query(lambda c: c.data == "main_start_session")
