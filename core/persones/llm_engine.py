@@ -10,7 +10,9 @@ def sync_get_response(messages):
         messages=messages,
         temperature=0.9,
     )
-    return response.choices[0].message.content
+    reply = response.choices[0].message.content
+    tokens = response.usage.total_tokens if response.usage else 0
+    return reply, tokens
 
 async def get_response(messages):
     loop = asyncio.get_running_loop()

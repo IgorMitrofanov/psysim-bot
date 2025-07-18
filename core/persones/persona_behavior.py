@@ -5,11 +5,12 @@ from core.persones.prompt_builder import build_prompt
 
 
 class PersonaBehavior:
-    def __init__(self, persona_data, resistance_level=None, emotional_state=None):
+    def __init__(self, persona_data, resistance_level=None, emotional_state=None, format=None):
         self.persona_data = persona_data
         self.name = persona_data['persona']['name']
-        self.resistance_level = resistance_level or "средний"
-        self.emotional_state = emotional_state or "нейтральное"
+        self.resistance_level = resistance_level
+        self.emotional_state = emotional_state
+        self.format = format
         self.history = []
 
         # Сохраняем min/max задержку и длину
@@ -50,19 +51,21 @@ class PersonaBehavior:
                 salted_prompt.append(msg)
 
         # Получаем ответ от LLM
-        reply = await get_response(salted_prompt)
+        reply, tokens_used = await get_response(salted_prompt)
 
         # Сохраняем обычный ответ в историю
         self.history.append({"role": "assistant", "content": reply})
 
         return reply
 
-    def reset(self, resistance_level=None, emotional_state=None):
+    def reset(self, resistance_level=None, emotional_state=None, format=None):
         self.history.clear()
         if resistance_level:
             self.resistance_level = resistance_level
         if emotional_state:
             self.emotional_state = emotional_state
+        if format:
+            self.format = format
             
 
     def get_history(self):

@@ -97,51 +97,54 @@ class SessionManager:
             if time_to_warning > 0:
                 logger.info(f"Will send warning to user {user_id} in {time_to_warning} seconds")
                 await asyncio.sleep(time_to_warning)
+
+                # ПРОВЕРКА ДО ОТПРАВКИ ПРЕДУПРЕЖДЕНИЯ
+                if self.session_ended.get(user_id):
+                    logger.info(f"Skipping warning for user {user_id} because session was aborted.")
+                    return
+
                 await self._send_warning(user_id, session_id, db_session)
-            
+                    
             # Ожидаем оставшееся время
             time_left = (expires_at - datetime.utcnow()).total_seconds()
             if time_left > 0:
                 logger.info(f"Waiting {time_left} seconds until session end for user {user_id}")
                 await asyncio.sleep(time_left)
-            
-            # Завершаем сессию с отправкой последнего сообщения
-            await self._end_session_with_farewell(user_id, session_id, db_session)
+                
+            await self.end_session(user_id, session_id, db_session)
+            self.session_ended[user_id] = True
+            await self.notify_session_end(user_id)
             
         except asyncio.CancelledError:
             logger.info(f"Session check cancelled for user {user_id}")
         except Exception as e:
             logger.error(f"Error in session timeout check: {e}")
             
-    async def _end_session_with_farewell(self, user_id: int, session_id: int, db_session: AsyncSession):
-        """Завершает сессию с отправкой прощального сообщения"""
+    async def abort_session(self, user_id: int):
+        """
+        Принудительно завершает сессию без сохранения в БД,
+        просто очищает состояние в памяти и отменяет таймер.
+        """
         try:
-            # Устанавливаем флаг окончания сессии
             self.session_ended[user_id] = True
             
-            # Получаем персонажа для прощального сообщения
-            persona = None
+            # Удаляем историю сообщений из памяти
             if user_id in self.message_history:
-                persona = self.message_history[user_id].get('persona')
+                del self.message_history[user_id]
             
-            # Отправляем последнее сообщение от персонажа
-            if persona:
-                try:
-                    last_response = await persona.send("Время сессии вышло, пора попрощаться.")
-                    await self.bot.send_message(user_id, last_response)
-                except Exception as e:
-                    logger.error(f"Error sending farewell message from persona: {e}")
+            # Отменяем таймер, если он есть
+            if user_id in self.active_checks:
+                self.active_checks[user_id].cancel()
+                del self.active_checks[user_id]
             
-            # Завершаем сессию
-            await self.end_session(user_id, session_id, db_session)
-            
-            # Отправляем уведомление о завершении
-            await self.notify_session_end(user_id)
-            
+            logger.info(f"Session aborted for user {user_id} (not saved)")
+            return True
         except Exception as e:
-            logger.error(f"Error in session farewell: {e}")
+            logger.error(f"Error aborting session for user {user_id}: {e}")
+            return False
 
-    async def end_session(self, user_id: int, session_id: int, db_session: AsyncSession):
+
+    async def end_session(self, user_id: int, session_id: int, db_session: AsyncSession, persona: Optional[object] = None):
         """Завершает сессию и сохраняет данные"""
         try:
             # Устанавливаем флаг окончания сессии
@@ -163,6 +166,12 @@ class SessionManager:
                 session.is_active = False
                 session.user_messages = json.dumps(history.get('user_messages', []), ensure_ascii=False)
                 session.bot_messages = json.dumps(history.get('bot_messages', []), ensure_ascii=False)
+                session.tokens_spent = history.get('tokens_spent', 0)
+
+                if persona:
+                    session.resistance_level = persona.resistance_level
+                    session.emotional = persona.emotional_state
+                    session.format = persona.format
                 
                 await db_session.commit()
                 
@@ -200,15 +209,18 @@ class SessionManager:
         except Exception as e:
             logger.error(f"Error sending session end notification: {e}")
 
-    async def add_message_to_history(self, user_id: int, message: str, is_user: bool):
-        """Добавляет сообщение в историю сессии"""
+    async def add_message_to_history(self, user_id: int, message: str, is_user: bool, tokens: int = 0):
+        """Добавляет сообщение и количество токенов в историю сессии"""
         if user_id not in self.message_history or self.session_ended.get(user_id, False):
             return
-            
+
         if is_user:
             self.message_history[user_id]['user_messages'].append(message)
         else:
             self.message_history[user_id]['bot_messages'].append(message)
+
+        # Подсчет токенов
+        self.message_history[user_id]['tokens_spent'] = self.message_history[user_id].get('tokens_spent', 0) + tokens
 
     async def is_session_active(
         self,

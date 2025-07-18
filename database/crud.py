@@ -131,3 +131,4 @@ async def subtract_balance_from_user(session: AsyncSession, user_id: int, amount
     if user and user.balance >= amount:
         user.balance -= amount
         await session.commit()
+
