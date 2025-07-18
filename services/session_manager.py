@@ -120,24 +120,40 @@ class SessionManager:
         except Exception as e:
             logger.error(f"Error in session timeout check: {e}")
             
-    async def abort_session(self, user_id: int):
+    async def abort_session(self, user_id: int, db_session: AsyncSession, session_id: Optional[int] = None):
         """
-        Принудительно завершает сессию без сохранения в БД,
-        просто очищает состояние в памяти и отменяет таймер.
+        Принудительно завершает сессию и удаляет её из БД.
+        Также очищает состояние в памяти и отменяет таймер.
         """
         try:
             self.session_ended[user_id] = True
-            
+
+            # Получаем session_id из памяти, если не передан
+            if not session_id and user_id in self.message_history:
+                session_id = self.message_history[user_id].get("session_id")
+
+            # Удаляем сессию из БД, если нашли
+            if session_id:
+                stmt = select(DBSession).where(DBSession.id == session_id)
+                result = await db_session.execute(stmt)
+                session = result.scalar_one_or_none()
+                if session:
+                    await db_session.delete(session)
+                    await db_session.commit()
+                    logger.info(f"Session {session_id} deleted from DB for user {user_id}")
+                else:
+                    logger.warning(f"No session found in DB to delete for user {user_id} (session_id={session_id})")
+
             # Удаляем историю сообщений из памяти
             if user_id in self.message_history:
                 del self.message_history[user_id]
-            
+
             # Отменяем таймер, если он есть
             if user_id in self.active_checks:
                 self.active_checks[user_id].cancel()
                 del self.active_checks[user_id]
-            
-            logger.info(f"Session aborted for user {user_id} (not saved)")
+
+            logger.info(f"Session aborted for user {user_id} (removed from memory and DB)")
             return True
         except Exception as e:
             logger.error(f"Error aborting session for user {user_id}: {e}")

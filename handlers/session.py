@@ -45,7 +45,7 @@ async def reset_session_handler(
     session_id = data.get("session_id")
 
     if session_id:
-        await session_manager.abort_session(message.from_user.id)
+        await session_manager.abort_session(message.from_user.id, session, session_id=session_id)
         await message.answer("🔄 Сессия была принудительно завершена.")
     else:
         await message.answer("ℹ️ Активной сессии не найдено.")
@@ -53,6 +53,7 @@ async def reset_session_handler(
     await state.clear()
     await message.answer(BACK_TO_MENU_TEXT, reply_markup=main_menu())
     await state.set_state(MainMenu.choosing)
+
 
 # --- Обработка сообщений во время сессии ---
 @router.message(MainMenu.in_session)
