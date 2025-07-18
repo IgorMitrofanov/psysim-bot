@@ -10,21 +10,23 @@ from keyboards.builder import main_menu
 from texts.common import BACK_TO_MENU_TEXT
 from config import logger 
 import json
+from config import config 
 
 class SessionManager:
     def __init__(self, bot: Bot):
         self.bot = bot
         self.active_checks = {}
         self.message_history = {} 
+        self.session_ended = {}  # Флаг окончания сессии для каждого пользователя
 
     async def start_session(
         self,
         db_session: AsyncSession,
-        user_id: int,
-        session_length_minutes: int
+        user_id: int
     ) -> int:
         """Создает новую сессию в БД и возвращает её ID"""
-        expires_at = datetime.utcnow() + timedelta(minutes=session_length_minutes)
+        session_length = 6 # config.SESSION_LENGTH_MINUTES
+        expires_at = datetime.utcnow() + timedelta(minutes=session_length)
         
         db_sess = DBSession(
             user_id=user_id,
@@ -41,52 +43,82 @@ class SessionManager:
         self.message_history[user_id] = {
             'user_messages': [],
             'bot_messages': [],
-            'session_id': db_sess.id
+            'session_id': db_sess.id,
+            'persona': None
         }
+        
+        # Сбрасываем флаг окончания сессии
+        self.session_ended[user_id] = False
         
         # Запускаем фоновую задачу для проверки времени
         self.active_checks[user_id] = asyncio.create_task(
             self._check_session_timeout(user_id, db_sess.id, expires_at, db_session)
         )
         
+        logger.info(f"Session started for user {user_id}. Duration: {config.SESSION_LENGTH_MINUTES} minutes. "
+                   f"Expires at: {expires_at}")
+        
         return db_sess.id
     
-    async def _send_warning(self, user_id: int, session_id: int):
+    async def _send_warning(self, user_id: int, session_id: int, db_session: AsyncSession):
         """Отправляет предупреждение за 5 минут до конца"""
         try:
-            if user_id in self.message_history:
-                persona = self.message_history[user_id].get('persona')
-                if persona:
-                    warning_msg = persona.get_warning_message()
+            if user_id in self.message_history and not self.session_ended.get(user_id, False):
+                session_data = self.message_history[user_id]
+                stmt = select(DBSession).where(DBSession.id == session_data['session_id'])
+                result = await db_session.execute(stmt)
+                session = result.scalar_one_or_none()
+                
+                if session:
+                    time_left = session.expires_at - datetime.utcnow()
+                    minutes_left = int(time_left.total_seconds() // 60)
+                    
+                    warning_msg = (
+                        f"⏳ Осталось {minutes_left + 1} минут до окончания сессии.\n" # с учетом округления в меньшую сторону + 1
+                    )
+                    
                     await self.bot.send_message(user_id, warning_msg)
+                    logger.info(f"Warning sent to user {user_id} ({minutes_left} minutes left)")
         except Exception as e:
             logger.error(f"Error sending warning message: {e}")
 
     async def _check_session_timeout(self, user_id: int, session_id: int, expires_at: datetime, db_session: AsyncSession):
         """Фоновая задача для проверки времени сессии"""
         try:
+            # Логгируем время до конца сессии
+            time_left = (expires_at - datetime.utcnow()).total_seconds()
+            minutes, seconds = divmod(time_left, 60)
+            logger.info(f"Session check started for user {user_id}. Time left: {int(minutes)}m {int(seconds)}s")
+            
             # Отправляем предупреждение за 5 минут до конца
-            warning_time = expires_at - timedelta(minutes=5)
+            warning_time = expires_at - timedelta(minutes=config.WARNING_BEFORE_END_MINUTES)
             time_to_warning = (warning_time - datetime.utcnow()).total_seconds()
             
             if time_to_warning > 0:
+                logger.info(f"Will send warning to user {user_id} in {time_to_warning} seconds")
                 await asyncio.sleep(time_to_warning)
-                await self._send_warning(user_id, session_id)
-
+                await self._send_warning(user_id, session_id, db_session)
+            
             # Ожидаем оставшееся время
             time_left = (expires_at - datetime.utcnow()).total_seconds()
             if time_left > 0:
+                logger.info(f"Waiting {time_left} seconds until session end for user {user_id}")
                 await asyncio.sleep(time_left)
             
             # Завершаем сессию с отправкой последнего сообщения
             await self._end_session_with_farewell(user_id, session_id, db_session)
             
+        except asyncio.CancelledError:
+            logger.info(f"Session check cancelled for user {user_id}")
         except Exception as e:
             logger.error(f"Error in session timeout check: {e}")
             
     async def _end_session_with_farewell(self, user_id: int, session_id: int, db_session: AsyncSession):
         """Завершает сессию с отправкой прощального сообщения"""
         try:
+            # Устанавливаем флаг окончания сессии
+            self.session_ended[user_id] = True
+            
             # Получаем персонажа для прощального сообщения
             persona = None
             if user_id in self.message_history:
@@ -94,8 +126,11 @@ class SessionManager:
             
             # Отправляем последнее сообщение от персонажа
             if persona:
-                last_response = await persona.send("Время сессии вышло, пора попрощаться.")
-                await self.bot.send_message(user_id, last_response)
+                try:
+                    last_response = await persona.send("Время сессии вышло, пора попрощаться.")
+                    await self.bot.send_message(user_id, last_response)
+                except Exception as e:
+                    logger.error(f"Error sending farewell message from persona: {e}")
             
             # Завершаем сессию
             await self.end_session(user_id, session_id, db_session)
@@ -109,6 +144,9 @@ class SessionManager:
     async def end_session(self, user_id: int, session_id: int, db_session: AsyncSession):
         """Завершает сессию и сохраняет данные"""
         try:
+            # Устанавливаем флаг окончания сессии
+            self.session_ended[user_id] = True
+            
             # Получаем сессию из БД
             stmt = select(DBSession).where(
                 DBSession.id == session_id,
@@ -137,7 +175,10 @@ class SessionManager:
                     self.active_checks[user_id].cancel()
                     del self.active_checks[user_id]
                 
+                logger.info(f"Session {session_id} ended for user {user_id}")
                 return True
+            
+            logger.warning(f"No active session found for user {user_id} to end")
             return False
         except Exception as e:
             logger.error(f"Error ending session: {e}")
@@ -155,12 +196,13 @@ class SessionManager:
                 BACK_TO_MENU_TEXT,
                 reply_markup=main_menu()
             )
+            logger.info(f"Session end notification sent to user {user_id}")
         except Exception as e:
             logger.error(f"Error sending session end notification: {e}")
 
     async def add_message_to_history(self, user_id: int, message: str, is_user: bool):
         """Добавляет сообщение в историю сессии"""
-        if user_id not in self.message_history:
+        if user_id not in self.message_history or self.session_ended.get(user_id, False):
             return
             
         if is_user:
@@ -174,6 +216,9 @@ class SessionManager:
         db_session: AsyncSession
     ) -> bool:
         """Проверяет, активна ли сессия пользователя"""
+        if self.session_ended.get(user_id, False):
+            return False
+            
         stmt = select(DBSession).where(
             DBSession.user_id == user_id,
             DBSession.is_active == True
@@ -189,10 +234,18 @@ class SessionManager:
             await self.end_session(user_id, session.id, db_session)
             return False
         
+        # Логгируем оставшееся время
+        time_left = session.expires_at - datetime.utcnow()
+        minutes, seconds = divmod(time_left.total_seconds(), 60)
+        logger.info(f"Session active for user {user_id}. Time left: {int(minutes)}m {int(seconds)}s")
+        
         return True
 
     async def cleanup(self):
         """Очистка при завершении работы"""
-        for task in self.active_checks.values():
+        for user_id, task in self.active_checks.items():
             task.cancel()
+            logger.info(f"Cancelled session check for user {user_id}")
         self.active_checks.clear()
+        self.message_history.clear()
+        self.session_ended.clear()

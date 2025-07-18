@@ -13,6 +13,7 @@ class Config:
     AI_API_KEY = os.getenv("AI_API_KEY")
     DEFAULT_MODEL = os.getenv("DEFAULT_MODEL")
     SESSION_LENGTH_MINUTES = os.getenv("SESSION_LENGTH_MINUTES")
+    WARNING_BEFORE_END_MINUTES = int(os.getenv("WARNING_BEFORE_END_MINUTES", 5))
     LOG_LEVEL = int(os.getenv("LOG_LEVEL", 20))  # 20 = INFO, 10 = DEBUG
 
 config = Config()

@@ -158,8 +158,7 @@ async def session_confirm_handler(
             # Создаем сессию в БД
             session_id = await session_manager.start_session(
                 session,
-                callback.from_user.id,
-                int(config.SESSION_LENGTH_MINUTES)
+                callback.from_user.id
             )
             
             await state.update_data(
