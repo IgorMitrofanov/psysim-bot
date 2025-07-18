@@ -80,16 +80,16 @@ async def handle_referral_bonus(session: AsyncSession, new_user: User, referrer:
         # Уведомляем
         username_info = f"@{new_user.username}" if new_user.username else f"пользователь (ID: {new_user.telegram_id})"
         text = (
-            "🎉 *Новый реферал!*\n"
+            "🎉 <b>Новый реферал!</b>\n"
             f"По вашей ссылке зарегистрировался: {username_info}\n"
             f"Как только он оформит подписку — вы получите бесплатную сессию!"
         )
-        await bot.send_message(chat_id=referrer.telegram_id, text=text, parse_mode="Markdown")
+        await bot.send_message(chat_id=referrer.telegram_id, text=text, parse_mode="HTML")
     except Exception as e:
         await session.rollback()
         logger.error(f"Referral bonus error: {e}")
 
-async def process_referral_bonus_after_payment(session: AsyncSession, user_id: int):
+async def process_referral_bonus_after_payment(session: AsyncSession, user_id: int, bot: Bot):
     referral_stmt = select(Referral).where(Referral.invited_user_id == user_id)
     referral_result = await session.execute(referral_stmt)
     referral = referral_result.scalar_one_or_none()
@@ -111,5 +111,13 @@ async def process_referral_bonus_after_payment(session: AsyncSession, user_id: i
     referrer.bonus_balance += 1
     referral.has_paid = True
     referral.bonus_given = True
+
+    username_info = f"@{user.username}" if user.username else f"пользователь (ID: {user.telegram_id})"
+    text = (
+        "🎉 <b>Ваш реферал приобрел подписку!</b>\n"
+        f"Пользователь, которого вы пригласили: {username_info}\n приобрел подписку!"
+        f"Вы получите бесплатную сессию в награду!"
+    )
+    await bot.send_message(chat_id=referrer.telegram_id, text=text, parse_mode="HTML")
 
     await session.commit()

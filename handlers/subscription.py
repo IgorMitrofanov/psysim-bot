@@ -1,4 +1,4 @@
-from aiogram import Router, types
+from aiogram import Router, types, Bot
 from sqlalchemy.ext.asyncio import AsyncSession
 from database.crud import get_user
 from keyboards.builder import subscription_keyboard
@@ -26,7 +26,7 @@ async def buy_tariff_menu(callback: types.CallbackQuery):
 
 
 @router.callback_query(lambda c: c.data.startswith("activate_"))
-async def activate_tariff_callback(callback: types.CallbackQuery, session: AsyncSession):
+async def activate_tariff_callback(callback: types.CallbackQuery, session: AsyncSession, bot: Bot):
     # callback.data: activate_start, activate_pro, activate_unlimited
     tariff_map = {
         "activate_start": ("start", 590, 7),
@@ -72,7 +72,7 @@ async def activate_tariff_callback(callback: types.CallbackQuery, session: Async
     )
     session.add(order)
 
-    await process_referral_bonus_after_payment(session, user.id)
+    await process_referral_bonus_after_payment(session, user.id, bot)
 
 
     await session.commit()
