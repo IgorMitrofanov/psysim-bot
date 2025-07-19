@@ -6,12 +6,14 @@ from .referal import router as referal_router
 from .help import router as help_router
 from .subscription import router as sub_router
 from .not_implemented import router as not_implemented_router
+from .rnd_session import router as rnd_session_router
 
 routers = [
     not_implemented_router,
     sub_router,
     common_router,
     feedback_router,
+    rnd_session_router,
     session_router,
     profile_router,
     referal_router,

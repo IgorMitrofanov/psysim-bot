@@ -19,12 +19,9 @@ class User(Base):
     
     balance = Column(Integer, default=0)
 
-    sessions_done = Column(Integer, default=0)
-    last_scenario = Column(String, nullable=True)
-
     referred_by_id = Column(Integer, ForeignKey('users.id'), nullable=True)  # ID пригласившего
     referral_code = Column(String, unique=True, index=True)               # Мой реф. код
-    bonus_balance = Column(Integer, default=1)                            # Кол-во бонусов
+    bonus_balance = Column(Integer, default=3)                            # Кол-во бонусов
 
     # Relationships
     orders = relationship("Order", back_populates="user")
@@ -57,15 +54,15 @@ class Session(Base):
     is_active = Column(Boolean, default=True)  # Флаг активности сессии
     
     is_free = Column(Boolean, default=False)
-    user_messages = Column(Text)  # Хранить всю переписку пользователя (например, JSON или просто текст)
-    bot_messages = Column(Text)   # Хранить все ответы бота
+    user_messages = Column(Text, nullable=True)  # Хранить всю переписку пользователя (например, JSON или просто текст)
+    bot_messages = Column(Text, nullable=True)   # Хранить все ответы бота
 
     report_text = Column(Text, nullable=True)  # Итоговый отчёт по сессии (если есть)
     tokens_spent = Column(Integer, nullable=True)  # Если считаешь расход токенов
 
     emotional = Column(String, nullable=True)  # Вместо "emotial" — исправил опечатку
     resistance_level = Column(String, nullable=True)  # "средний", "высокий"
-    format = Column(String, nullable=True)            # "текст", "аудио"
+    persona_name = Column(String, nullable=True) 
 
     user = relationship("User", back_populates="sessions")
 

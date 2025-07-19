@@ -37,7 +37,11 @@ async def get_sessions_today_count(db_session: AsyncSession, user_id: int) -> in
     count = count_query.scalar_one()
     return count or 0
 
-
+async def count_user_sessions(db: AsyncSession, user_id: int) -> int:
+    result = await db.execute(
+        select(func.count()).select_from(Session).where(Session.user_id == user_id)
+    )
+    return result.scalar_one()
 
 from datetime import datetime
 import json

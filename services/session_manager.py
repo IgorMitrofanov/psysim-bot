@@ -23,7 +23,11 @@ class SessionManager:
     async def start_session(
         self,
         db_session: AsyncSession,
-        user_id: int
+        user_id: int,
+        is_free: bool,
+        persona_name:str,
+        resistance:str,
+        emotion:str
     ) -> int:
         """Создает новую сессию в БД и возвращает её ID"""
         session_length = config.SESSION_LENGTH_MINUTES
@@ -33,7 +37,11 @@ class SessionManager:
             user_id=user_id,
             started_at=datetime.utcnow(),
             expires_at=expires_at,
-            is_active=True
+            is_active=True,
+            is_free=is_free,
+            emotional=emotion,
+            resistance_level=resistance,
+            persona_name=persona_name
         )
         
         db_session.add(db_sess)
@@ -226,8 +234,8 @@ class SessionManager:
         except Exception as e:
             logger.error(f"Error sending session end notification: {e}")
 
-    async def add_message_to_history(self, user_id: int, message: str, is_user: bool, tokens: int = 0):
-        """Добавляет сообщение и количество токенов в историю сессии"""
+    async def add_message_to_history(self, user_id: int, message: str, is_user: bool):
+        """Добавляет сообщение и примерное количество токенов в историю сессии"""
         if user_id not in self.message_history or self.session_ended.get(user_id, False):
             return
 
@@ -236,8 +244,11 @@ class SessionManager:
         else:
             self.message_history[user_id]['bot_messages'].append(message)
 
-        # Подсчет токенов
-        self.message_history[user_id]['tokens_spent'] = self.message_history[user_id].get('tokens_spent', 0) + tokens
+        # Примерная оценка токенов: 1 токен ≈ 4 символа
+        estimated_tokens = max(1, len(message) // 4)
+        self.message_history[user_id]['tokens_spent'] = (
+            self.message_history[user_id].get('tokens_spent', 0) + estimated_tokens
+        )
 
     async def is_session_active(
         self,
@@ -279,37 +290,24 @@ class SessionManager:
         self.message_history.clear()
         self.session_ended.clear()
         
-        
-    async def can_start_session(self, db_session: AsyncSession, user) -> bool:
-        """Проверяет, можно ли запустить сессию (по тарифу и бонусам)"""
-        quota = config.TARIFF_QUOTAS.get(user.active_tariff, 0)
-        sessions_today = await get_sessions_today_count(db_session, user.id)
-
-        if sessions_today < quota:
-            # Есть доступная квота, списываем квоту (фактически просто разрешаем старт)
-            return True
-        elif user.bonus_balance > 0:
-            # Используем бонусы
-            return True
-        else:
-            return False
-
-    async def use_session_quota_or_bonus(self, db_session: AsyncSession, user) -> bool:
+    async def use_session_quota_or_bonus(self, db_session: AsyncSession, user) -> tuple[bool, bool]:
         """
-        Списывает 1 сессию из квоты (логически) или 1 бонус.
-        Возвращает True если списание успешно, False если нет ресурсов.
+        Пытается использовать квоту или бонус:
+        - Возвращает (True, False) если сессия списана из квоты
+        - Возвращает (True, True) если сессия списана из бонусов
+        - Возвращает (False, False) если ресурсов нет
         """
         quota = config.TARIFF_QUOTAS.get(user.active_tariff, 0)
         sessions_today = await get_sessions_today_count(db_session, user.id)
 
         if sessions_today < quota:
-            # Списываем из квоты (в квоте — просто считаем, квота не хранится отдельно)
-            # Просто увеличиваем счетчик сессий при создании, здесь ничего менять не надо
-            return True
+            # Использована квота
+            return True, False
         elif user.bonus_balance > 0:
-            # Списываем бонус
+            # Использован бонус
             user.bonus_balance -= 1
             await db_session.commit()
-            return True
+            return True, True
         else:
-            return False
+            # Ресурсов нет
+            return False, False
