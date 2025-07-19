@@ -80,7 +80,7 @@ async def session_interaction_handler(
 
     # Добавляем сообщение пользователя в историю
     await session_manager.add_message_to_history(
-        message.from_user.id,
+        db_user.id,
         message.text,
         is_user=True
     )
@@ -91,7 +91,7 @@ async def session_interaction_handler(
     
     # Добавляем ответ бота в историю
     await session_manager.add_message_to_history(
-        message.from_user.id,
+        db_user.id,
         response,
         is_user=False
     )
@@ -105,9 +105,9 @@ async def manual_end_session_handler(
 ):
     data = await state.get_data()
     session_id = data.get("session_id")
-    
+    db_user = await get_user(session, telegram_id=callback.from_user.id)
     if session_id:
-        await session_manager.end_session(callback.from_user.id, session_id, session)
+        await session_manager.end_session(db_user.id, session_id, session)
     
     await callback.message.edit_text(SESSION_ENDED_AHEAD_TEXT)
     await state.clear()
@@ -194,7 +194,7 @@ async def session_confirm_handler(
                 return
 
             # Пытаемся списать квоту или бонус
-            used, is_free = await session_manager.use_session_quota_or_bonus(session, db_user)
+            used, is_free = await session_manager.use_session_quota_or_bonus(session, db_user.id)
             if not used:
                 # На всякий случай (если логика где-то сбоит)
                 await callback.message.answer(
@@ -203,10 +203,13 @@ async def session_confirm_handler(
                 )
                 return
             
-            # Создаем сессию в БД
             session_id = await session_manager.start_session(
-                session,
-                callback.from_user.id
+                db_session=session,
+                user_id=db_user.id,
+                is_free=is_free,
+                persona_name=persona_name,
+                resistance=res_lvl,
+                emotion=emo_lvl
             )
             
             await state.update_data(

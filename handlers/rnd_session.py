@@ -69,12 +69,12 @@ async def random_session_handler(
 
     # Создаем сессию
     session_id = await session_manager.start_session(
-        session,
-        db_user.id,
-        is_free,
-        persona.name,
-        resistance,
-        emotion,
+        db_session=session,
+        user_id=db_user.id,
+        is_free=is_free,
+        persona_name=persona_name,
+        resistance=resistance,
+        emotion=emotion
     )
 
     await state.update_data(
