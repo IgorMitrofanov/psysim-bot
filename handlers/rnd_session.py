@@ -34,7 +34,7 @@ async def random_session_handler(
         return
 
     # Списание квоты или бонуса
-    used, is_free = await session_manager.use_session_quota_or_bonus(session, db_user)
+    used, is_free = await session_manager.use_session_quota_or_bonus(session, db_user.id)
     if not used:
         await callback.message.edit_text(
             "⚠️ Ошибка списания сессии. Попробуйте позже.",

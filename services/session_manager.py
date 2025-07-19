@@ -5,7 +5,7 @@ from aiogram import Bot
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from database.models import Session as DBSession
-from database.crud import get_sessions_today_count
+from database.crud import get_sessions_today_count, get_user_by_id
 from states import MainMenu
 from keyboards.builder import main_menu
 from texts.common import BACK_TO_MENU_TEXT
@@ -135,13 +135,16 @@ class SessionManager:
         Также очищает состояние в памяти и отменяет таймер.
         """
         try:
+            # Send notification first
+            await self.notify_session_end(user_id)
+            
+            # Then set the ended flag
             self.session_ended[user_id] = True
 
-            # Получаем session_id из памяти, если не передан
+            # Rest of the abort logic...
             if not session_id and user_id in self.message_history:
                 session_id = self.message_history[user_id].get("session_id")
 
-            # Удаляем сессию из БД, если нашли
             if session_id:
                 stmt = select(DBSession).where(DBSession.id == session_id)
                 result = await db_session.execute(stmt)
@@ -150,14 +153,10 @@ class SessionManager:
                     await db_session.delete(session)
                     await db_session.commit()
                     logger.info(f"Session {session_id} deleted from DB for user {user_id}")
-                else:
-                    logger.warning(f"No session found in DB to delete for user {user_id} (session_id={session_id})")
 
-            # Удаляем историю сообщений из памяти
             if user_id in self.message_history:
                 del self.message_history[user_id]
 
-            # Отменяем таймер, если он есть
             if user_id in self.active_checks:
                 self.active_checks[user_id].cancel()
                 del self.active_checks[user_id]
@@ -168,14 +167,16 @@ class SessionManager:
             logger.error(f"Error aborting session for user {user_id}: {e}")
             return False
 
-
     async def end_session(self, user_id: int, session_id: int, db_session: AsyncSession, persona: Optional[object] = None):
         """Завершает сессию и сохраняет данные"""
         try:
-            # Устанавливаем флаг окончания сессии
+            # Send notification first
+            await self.notify_session_end(user_id)
+            
+            # Then set the ended flag
             self.session_ended[user_id] = True
             
-            # Получаем сессию из БД
+            # Rest of the end session logic...
             stmt = select(DBSession).where(
                 DBSession.id == session_id,
                 DBSession.user_id == user_id
@@ -184,7 +185,6 @@ class SessionManager:
             session = result.scalar_one_or_none()
             
             if session:
-                # Сохраняем историю сообщений
                 history = self.message_history.get(user_id, {})
                 
                 session.ended_at = datetime.utcnow()
@@ -200,11 +200,9 @@ class SessionManager:
                 
                 await db_session.commit()
                 
-                # Удаляем историю сообщений из памяти
                 if user_id in self.message_history:
                     del self.message_history[user_id]
                 
-                # Отменяем таймер, если он есть
                 if user_id in self.active_checks:
                     self.active_checks[user_id].cancel()
                     del self.active_checks[user_id]
@@ -290,13 +288,14 @@ class SessionManager:
         self.message_history.clear()
         self.session_ended.clear()
         
-    async def use_session_quota_or_bonus(self, db_session: AsyncSession, user) -> tuple[bool, bool]:
+    async def use_session_quota_or_bonus(self, db_session: AsyncSession, user_id) -> tuple[bool, bool]:
         """
         Пытается использовать квоту или бонус:
         - Возвращает (True, False) если сессия списана из квоты
         - Возвращает (True, True) если сессия списана из бонусов
         - Возвращает (False, False) если ресурсов нет
         """
+        user = await get_user_by_id(db_session, user_id)
         quota = config.TARIFF_QUOTAS.get(user.active_tariff, 0)
         sessions_today = await get_sessions_today_count(db_session, user.id)
 
