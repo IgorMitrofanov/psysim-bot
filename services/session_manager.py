@@ -5,7 +5,7 @@ from aiogram import Bot
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from database.models import Session as DBSession
-from database.crud import get_sessions_today_count, get_user_by_id
+from database.crud import get_sessions_today_count, get_user_by_id, get_telegram_id_by_user_id
 from states import MainMenu
 from keyboards.builder import main_menu
 from texts.common import BACK_TO_MENU_TEXT
@@ -85,9 +85,9 @@ class SessionManager:
                     warning_msg = (
                         f"⏳ Осталось {minutes_left + 1} минут до окончания сессии.\n" # с учетом округления в меньшую сторону + 1
                     )
-                    
-                    await self.bot.send_message(user_id, warning_msg)
-                    logger.info(f"Warning sent to user {user_id} ({minutes_left} minutes left)")
+                    telegram_id = await get_telegram_id_by_user_id(db_session, user_id)
+                    await self.bot.send_message(telegram_id, warning_msg)
+                    logger.info(f"Warning sent to user {user_id} ({minutes_left + 1} minutes left)")
         except Exception as e:
             logger.error(f"Error sending warning message: {e}")
 
@@ -111,7 +111,6 @@ class SessionManager:
                 if self.session_ended.get(user_id):
                     logger.info(f"Skipping warning for user {user_id} because session was aborted.")
                     return
-
                 await self._send_warning(user_id, session_id, db_session)
                     
             # Ожидаем оставшееся время
@@ -122,7 +121,7 @@ class SessionManager:
                 
             await self.end_session(user_id, session_id, db_session)
             self.session_ended[user_id] = True
-            await self.notify_session_end(user_id)
+            await self.notify_session_end(user_id, db_session)
             
         except asyncio.CancelledError:
             logger.info(f"Session check cancelled for user {user_id}")
@@ -136,7 +135,7 @@ class SessionManager:
         """
         try:
             # Send notification first
-            await self.notify_session_end(user_id)
+            await self.notify_session_end(user_id, db_session)
             
             # Then set the ended flag
             self.session_ended[user_id] = True
@@ -171,7 +170,7 @@ class SessionManager:
         """Завершает сессию и сохраняет данные"""
         try:
             # Send notification first
-            await self.notify_session_end(user_id)
+            await self.notify_session_end(user_id, db_session)
             
             # Then set the ended flag
             self.session_ended[user_id] = True
@@ -196,7 +195,6 @@ class SessionManager:
                 if persona:
                     session.resistance_level = persona.resistance_level
                     session.emotional = persona.emotional_state
-                    session.format = persona.format
                 
                 await db_session.commit()
                 
@@ -216,15 +214,16 @@ class SessionManager:
             logger.error(f"Error ending session: {e}")
             return False
 
-    async def notify_session_end(self, user_id: int):
+    async def notify_session_end(self, user_id: int, db_session: AsyncSession):
         """Уведомляет пользователя об окончании сессии"""
+        telegram_id = await get_telegram_id_by_user_id(db_session, user_id)
         try:
             await self.bot.send_message(
-                user_id,
+                telegram_id,
                 "⌛️ Время сессии истекло. Сессия сохранена."
             )
             await self.bot.send_message(
-                user_id,
+                telegram_id,
                 BACK_TO_MENU_TEXT,
                 reply_markup=main_menu()
             )

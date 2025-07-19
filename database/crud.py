@@ -18,6 +18,12 @@ async def get_user_by_id(session: AsyncSession, user_id: int) -> User | None:
     return result.scalar_one_or_none()
 
 
+async def get_telegram_id_by_user_id(session: AsyncSession, user_id: int) -> int | None:
+    stmt = select(User.telegram_id).where(User.id == user_id)
+    result = await session.execute(stmt)
+    row = result.first()
+    return row[0] if row else None
+
 async def get_user_by_referral_code(session: AsyncSession, code: str) -> User | None:
     stmt = select(User).where(User.referral_code == code)
     result = await session.execute(stmt)
@@ -92,7 +98,6 @@ async def save_session(
     db_session.bot_messages = json.dumps(bot_msgs, ensure_ascii=False)
     db_session.emotional = state_data.get("emotion")
     db_session.resistance_level = state_data.get("resistance")
-    db_session.format = state_data.get("format")
     db_session.is_free = state_data.get("is_trial", False)
     
     await session.commit()
