@@ -29,7 +29,7 @@ SESSION_STARTED_TEXT = (
     "Удачи! 🎉"
 )
 
-PERSONA_NO_FOUND_TEXT = (
+PERSONA_NOT_FOUND_TEXT = (
     "Ошибка: персонаж не найден."
 )
 

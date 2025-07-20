@@ -25,7 +25,7 @@ from texts.session_texts import (
     NO_USER_TEXT,
     SESSION_RESET_TEXT,
     SESSION_RESET_ERROR_TEXT,
-    PERSONA_NO_FOUND_TEXT,
+    PERSONA_NOT_FOUND_TEXT,
     SESSION_END_TEXT,
     NO_QUOTA_OR_BONUS_FOR_SESSION,
     CHOOSE_PERSONE_FOR_SESSION_TEXT,
@@ -37,6 +37,7 @@ from texts.common import BACK_TO_MENU_TEXT
 from aiogram.types import Message
 from services.session_manager import SessionManager
 from aiogram.filters import Command
+from config import logger
 
 router = Router(name="session")
 
@@ -75,41 +76,80 @@ async def session_interaction_handler(
     session: AsyncSession,
     session_manager: SessionManager
 ):
-    data = await state.get_data()
-    persona: PersonaBehavior = data.get("persona")
-    if not persona:
-        await message.answer(PERSONA_NO_FOUND_TEXT)
-        return
-    db_user = await get_user(session, telegram_id=message.from_user.id)
-    # Проверяем, активна ли еще сессия
-    if not await session_manager.is_session_active(db_user.id, session):
-        # Сессия закончилась, сообщаем юзеру и возвращаемся в главное меню
-        await message.answer(SESSION_END_TEXT)
-        await message.answer(BACK_TO_MENU_TEXT, reply_markup=main_menu())
-        await state.clear()
-        await state.set_state(MainMenu.choosing)
-        return
-    # Сессия еще активна
-    # Добавляем сообщение пользователя в историю
-    await session_manager.add_message_to_history(
-        db_user.id,
-        message.text,
-        is_user=True,
-        tokens_used=len(message.text) // 4 # Приблизительная оценка 4 сивола ~ 1 токен
-    )
+    try:
+        data = await state.get_data()
+        persona: PersonaBehavior = data.get("persona")
+        session_id = data.get("session_id")
+        
+        if not persona or not session_id:
+            await message.answer(PERSONA_NOT_FOUND_TEXT)
+            await state.clear()
+            return
 
-    # Обработка сообщения от абстрактной "персоны"
-    # TODO: модернизировать - надо чтобы персона брала сообщения пользователя из очереди сообщений за каждый определенный случаный интервал и отвечала сразу на эту пачку
-    response, tokens_used = await persona.send(message.text)
-    await message.answer(response)
-    
-    # Добавляем ответ "персоны" в историю
-    await session_manager.add_message_to_history(
-        db_user.id,
-        response,
-        is_user=False,
-        tokens_used=tokens_used
-    )
+        # Проверка активности сессии
+        db_user = await get_user(session, telegram_id=message.from_user.id)
+        if not await session_manager.is_session_active(db_user.id, session):
+            await message.answer(SESSION_END_TEXT)
+            await message.answer(BACK_TO_MENU_TEXT, reply_markup=main_menu())
+            await state.clear()
+            await state.set_state(MainMenu.choosing)
+            return
+
+        # Добавляем сообщение в историю
+        await session_manager.add_message_to_history(
+            session_id,
+            message.text,
+            is_user=True,
+            tokens_used=len(message.text) // 4
+        )
+
+        # Обработка сообщения от персонажа
+        result = await persona.send(message.text)
+        
+        if result is not None:  # Персонаж ответил
+            response, tokens_used = result
+            # Форматированый вывод - депрекейтед
+            # formatted_response = f"""
+            # <b>{persona.name}</b>:
+            # <i>{response}</i>
+            # """
+            await message.answer(response, parse_mode="HTML")
+            
+            await session_manager.add_message_to_history(
+                session_id,
+                response,
+                is_user=False,
+                tokens_used=tokens_used
+            )
+        else:  # Персонаж молчит
+            silence_notification = f"""
+            <b>🔇 {persona.name} молчит</b>
+            <code>Персонаж решил не отвечать на это сообщение</code>
+            """
+            await message.answer(silence_notification, parse_mode="HTML")
+            
+            silence_result = await persona.check_silence()
+            if silence_result is not None:
+                silence_response, silence_tokens = silence_result
+                formatted_silence = f"""
+                <b>{persona.name}</b> (после паузы):
+                <i>{silence_response}</i>
+                """
+                await message.answer(formatted_silence, parse_mode="HTML")
+                await session_manager.add_message_to_history(
+                    session_id,
+                    silence_response,
+                    is_user=False,
+                    tokens_used=silence_tokens
+                )
+
+        # Обновляем активность сессии (если метод существует)
+        if hasattr(session_manager, 'update_session_activity'):
+            await session_manager.update_session_activity(session_id)
+
+    except Exception as e:
+        logger.error(f"Session error: {e}")
+        await message.answer("Произошла ошибка в сессии. Попробуйте позже.")
 
 # --- Старт сессии ---
 @router.callback_query(lambda c: c.data == "main_start_session")
