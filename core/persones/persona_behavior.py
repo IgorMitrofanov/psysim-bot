@@ -56,7 +56,7 @@ class PersonaBehavior:
         # Сохраняем обычный ответ в историю
         self.history.append({"role": "assistant", "content": reply})
 
-        return reply
+        return reply, tokens_used
 
     def reset(self, resistance_level=None, emotional_state=None, format=None):
         self.history.clear()

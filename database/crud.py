@@ -32,16 +32,19 @@ async def get_user_by_referral_code(session: AsyncSession, code: str) -> User | 
 
 from sqlalchemy import func
 
-async def get_sessions_today_count(db_session: AsyncSession, user_id: int) -> int:
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+async def get_sessions_month_count(db_session: AsyncSession, user_id: int) -> int:
+    """Возвращает количество сессий пользователя в текущем месяце."""
+    now = datetime.utcnow()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     count_query = await db_session.execute(
         select(func.count(Session.id)).where(
             Session.user_id == user_id,
-            Session.started_at >= today_start
+            Session.started_at >= month_start
         )
     )
     count = count_query.scalar_one()
     return count or 0
+
 
 async def count_user_sessions(db: AsyncSession, user_id: int) -> int:
     result = await db.execute(

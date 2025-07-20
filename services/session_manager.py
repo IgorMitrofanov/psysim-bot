@@ -3,22 +3,23 @@ from typing import Optional
 import asyncio
 from aiogram import Bot
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select
 from database.models import Session as DBSession
-from database.crud import get_sessions_today_count, get_user_by_id, get_telegram_id_by_user_id
-from states import MainMenu
+from database.crud import get_sessions_month_count, get_user_by_id, get_telegram_id_by_user_id
 from keyboards.builder import main_menu
 from texts.common import BACK_TO_MENU_TEXT
 from config import logger 
 import json
 from config import config
 
+# --- Менеджер сессий ---
+# Осуществляет управление сессиями: начало, окончание, нотификация юзера, хранение данных сессии и их запись в БД
 class SessionManager:
     def __init__(self, bot: Bot):
-        self.bot = bot
-        self.active_checks = {}
-        self.message_history = {} 
-        self.session_ended = {}  # Флаг окончания сессии для каждого пользователя
+        self.bot = bot            # Инстанс бот
+        self.active_checks = {}   # Список активных сессий для таймера
+        self.message_history = {} # История сообщений - юзера и персоны
+        self.session_ended = {}   # Флаг окончания сессии для каждого пользователя
 
     async def start_session(
         self,
@@ -30,9 +31,10 @@ class SessionManager:
         emotion:str
     ) -> int:
         """Создает новую сессию в БД и возвращает её ID"""
+        # Длина сессии из конфига приложения
         session_length = config.SESSION_LENGTH_MINUTES
         expires_at = datetime.utcnow() + timedelta(minutes=int(session_length))
-        
+        # Запись в БД
         db_sess = DBSession(
             user_id=user_id,
             started_at=datetime.utcnow(),
@@ -43,7 +45,6 @@ class SessionManager:
             resistance_level=resistance,
             persona_name=persona_name
         )
-        
         db_session.add(db_sess)
         await db_session.commit()
         await db_session.refresh(db_sess)
@@ -53,7 +54,8 @@ class SessionManager:
             'user_messages': [],
             'bot_messages': [],
             'session_id': db_sess.id,
-            'persona': None
+            'persona': None,
+            'tokens_spent': 0
         }
         
         # Сбрасываем флаг окончания сессии
@@ -70,7 +72,7 @@ class SessionManager:
         return db_sess.id
     
     async def _send_warning(self, user_id: int, session_id: int, db_session: AsyncSession):
-        """Отправляет предупреждение за 5 минут до конца"""
+        """Отправляет предупреждение за N минут до конца"""
         try:
             if user_id in self.message_history and not self.session_ended.get(user_id, False):
                 session_data = self.message_history[user_id]
@@ -99,7 +101,7 @@ class SessionManager:
             minutes, seconds = divmod(time_left, 60)
             logger.info(f"Session check started for user {user_id}. Time left: {int(minutes)}m {int(seconds)}s")
             
-            # Отправляем предупреждение за 5 минут до конца
+            # Отправляем предупреждение за N минут до конца - берется из конфига приложения
             warning_time = expires_at - timedelta(minutes=int(config.WARNING_BEFORE_END_MINUTES))
             time_to_warning = (warning_time - datetime.utcnow()).total_seconds()
             
@@ -107,10 +109,11 @@ class SessionManager:
                 logger.info(f"Will send warning to user {user_id} in {time_to_warning} seconds")
                 await asyncio.sleep(time_to_warning)
 
-                # ПРОВЕРКА ДО ОТПРАВКИ ПРЕДУПРЕЖДЕНИЯ
+                # Проверка до отправки предупреждения, может сессия уже закончилась?
                 if self.session_ended.get(user_id):
                     logger.info(f"Skipping warning for user {user_id} because session was aborted.")
                     return
+                # Предупреждаем
                 await self._send_warning(user_id, session_id, db_session)
                     
             # Ожидаем оставшееся время
@@ -118,10 +121,8 @@ class SessionManager:
             if time_left > 0:
                 logger.info(f"Waiting {time_left} seconds until session end for user {user_id}")
                 await asyncio.sleep(time_left)
-                
+            # Завершаем сессиию
             await self.end_session(user_id, session_id, db_session)
-            self.session_ended[user_id] = True
-            await self.notify_session_end(user_id, db_session)
             
         except asyncio.CancelledError:
             logger.info(f"Session check cancelled for user {user_id}")
@@ -134,13 +135,13 @@ class SessionManager:
         Также очищает состояние в памяти и отменяет таймер.
         """
         try:
-            # Send notification first
+            # Отправим юзеру сообщение об окончании сессии
             await self.notify_session_end(user_id, db_session)
             
-            # Then set the ended flag
+            # Выставляем флаг окончания сессии
             self.session_ended[user_id] = True
 
-            # Rest of the abort logic...
+            # Пытаемся получить айди сессии
             if not session_id and user_id in self.message_history:
                 session_id = self.message_history[user_id].get("session_id")
 
@@ -149,13 +150,16 @@ class SessionManager:
                 result = await db_session.execute(stmt)
                 session = result.scalar_one_or_none()
                 if session:
+                    # Стираем запись о прерванной сессии
                     await db_session.delete(session)
                     await db_session.commit()
                     logger.info(f"Session {session_id} deleted from DB for user {user_id}")
 
+            # Удаляем историю сообщений
             if user_id in self.message_history:
                 del self.message_history[user_id]
-
+            
+            # Убираем таймер
             if user_id in self.active_checks:
                 self.active_checks[user_id].cancel()
                 del self.active_checks[user_id]
@@ -169,13 +173,14 @@ class SessionManager:
     async def end_session(self, user_id: int, session_id: int, db_session: AsyncSession, persona: Optional[object] = None):
         """Завершает сессию и сохраняет данные"""
         try:
-            # Send notification first
+            
+            # Уведомляем юзера
             await self.notify_session_end(user_id, db_session)
             
-            # Then set the ended flag
+            # Выставляем флаг окончания сессии
             self.session_ended[user_id] = True
             
-            # Rest of the end session logic...
+            
             stmt = select(DBSession).where(
                 DBSession.id == session_id,
                 DBSession.user_id == user_id
@@ -231,7 +236,7 @@ class SessionManager:
         except Exception as e:
             logger.error(f"Error sending session end notification: {e}")
 
-    async def add_message_to_history(self, user_id: int, message: str, is_user: bool):
+    async def add_message_to_history(self, user_id: int, message: str, is_user: bool, tokens_used: int):
         """Добавляет сообщение и примерное количество токенов в историю сессии"""
         if user_id not in self.message_history or self.session_ended.get(user_id, False):
             return
@@ -241,10 +246,8 @@ class SessionManager:
         else:
             self.message_history[user_id]['bot_messages'].append(message)
 
-        # Примерная оценка токенов: 1 токен ≈ 4 символа
-        estimated_tokens = max(1, len(message) // 4)
         self.message_history[user_id]['tokens_spent'] = (
-            self.message_history[user_id].get('tokens_spent', 0) + estimated_tokens
+            self.message_history[user_id].get('tokens_spent', 0) + tokens_used
         )
 
     async def is_session_active(
@@ -296,9 +299,9 @@ class SessionManager:
         """
         user = await get_user_by_id(db_session, user_id)
         quota = config.TARIFF_QUOTAS.get(user.active_tariff, 0)
-        sessions_today = await get_sessions_today_count(db_session, user.id)
+        sessions_this_month = await get_sessions_month_count(db_session, user.id)
 
-        if sessions_today < quota:
+        if sessions_this_month < quota:
             # Использована квота
             return True, False
         elif user.bonus_balance > 0:

@@ -22,10 +22,16 @@ from texts.session_texts import (
     FORMAT_SELECT_TEXT,
     CONFIRM_SESSION_TEXT,
     SESSION_STARTED_TEXT,
-    SESSION_ENDED_AHEAD_TEXT,
     NO_USER_TEXT,
-    NO_FREE_SESSIONS_TEXT,
-    RANDOM_SESSION_STARTED_TEXT
+    SESSION_RESET_TEXT,
+    SESSION_RESET_ERROR_TEXT,
+    PERSONA_NO_FOUND_TEXT,
+    SESSION_END_TEXT,
+    NO_QUOTA_OR_BONUS_FOR_SESSION,
+    CHOOSE_PERSONE_FOR_SESSION_TEXT,
+    res_map,
+    emo_map,
+    format_map
 )
 from texts.common import BACK_TO_MENU_TEXT
 from aiogram.types import Message
@@ -34,7 +40,10 @@ from aiogram.filters import Command
 
 router = Router(name="session")
 
+# ВАЖНО: Здесь используется абстрактный менеджер работы с сессиями, он работает с user_id [int] - это айди из БД, не телеграм айди!
+# Менеджер сам найдет телеграм айди юзера с помощью метода из crud
 
+# --- Команда ресета - вынужденной остановки сессии, она в БД не записывается ---
 @router.message(Command("reset_session"))
 async def reset_session_handler(
     message: Message,
@@ -47,9 +56,9 @@ async def reset_session_handler(
 
     if session_id:
         await session_manager.abort_session(message.from_user.id, session, session_id=session_id)
-        await message.answer("🔄 Сессия была принудительно завершена.")
+        await message.answer(SESSION_RESET_TEXT)
     else:
-        await message.answer("ℹ️ Активной сессии не найдено.")
+        await message.answer(SESSION_RESET_ERROR_TEXT)
 
     await state.clear()
     await message.answer(BACK_TO_MENU_TEXT, reply_markup=main_menu())
@@ -67,55 +76,38 @@ async def session_interaction_handler(
     data = await state.get_data()
     persona: PersonaBehavior = data.get("persona")
     if not persona:
-        await message.answer("Ошибка: персонаж не найден.")
+        await message.answer(PERSONA_NO_FOUND_TEXT)
         return
     db_user = await get_user(session, telegram_id=message.from_user.id)
     # Проверяем, активна ли еще сессия
     if not await session_manager.is_session_active(db_user.id, session):
-        await message.answer("⌛️ Время сессии истекло. Сессия сохранена.")
+        # Сессия закончилась, сообщаем юзеру и возвращаемся в главное меню
+        await message.answer(SESSION_END_TEXT)
         await message.answer(BACK_TO_MENU_TEXT, reply_markup=main_menu())
         await state.clear()
         await state.set_state(MainMenu.choosing)
         return
-
+    # Сессия еще активна
     # Добавляем сообщение пользователя в историю
     await session_manager.add_message_to_history(
         db_user.id,
         message.text,
-        is_user=True
+        is_user=True,
+        tokens_used=len(message.text) // 4 # Приблизительная оценка 4 сивола ~ 1 токен
     )
 
-    # Обработка сообщения
-    response = await persona.send(message.text)
+    # Обработка сообщения от абстрактной "персоны"
+    # TODO: модернизировать - надо чтобы персона брала сообщения пользователя из очереди сообщений за каждый определенный случаный интервал и отвечала сразу на эту пачку
+    response, tokens_used = await persona.send(message.text)
     await message.answer(response)
     
-    # Добавляем ответ бота в историю
+    # Добавляем ответ "персоны" в историю
     await session_manager.add_message_to_history(
         db_user.id,
         response,
-        is_user=False
+        is_user=False,
+        tokens_used=tokens_used
     )
-
-@router.callback_query(MainMenu.in_session, lambda c: c.data == "end_session")
-async def manual_end_session_handler(
-    callback: types.CallbackQuery, 
-    state: FSMContext,
-    session: AsyncSession,
-    session_manager: SessionManager
-):
-    data = await state.get_data()
-    session_id = data.get("session_id")
-    db_user = await get_user(session, telegram_id=callback.from_user.id)
-    if session_id:
-        await session_manager.end_session(db_user.id, session_id, session)
-    
-    await callback.message.edit_text(SESSION_ENDED_AHEAD_TEXT)
-    await state.clear()
-    await callback.message.answer(
-        BACK_TO_MENU_TEXT,
-        reply_markup=main_menu()
-    )
-    await state.set_state(MainMenu.choosing)
 
 # --- Старт сессии ---
 @router.callback_query(lambda c: c.data == "main_start_session")
@@ -146,7 +138,9 @@ async def session_confirm_handler(
 ):
     await callback.answer()
     match callback.data:
+        # Меню подтверждения: начать сессию, назад
         case "session_confirm_start":
+            # Подготовка к началу сессии
             data = await state.get_data()
             persona_name = data.get("persona_name")
             personas = load_personas()
@@ -155,24 +149,9 @@ async def session_confirm_handler(
                 await callback.message.edit_text("Персонаж не найден. Попробуйте снова.")
                 await state.set_state(MainMenu.session_format)
                 return
-
+            # Создаем "персону"
             persona = PersonaBehavior(persona_data)
-            res_map = {
-                "resistance_medium": "средний",
-                "resistance_high": "высокий"
-            }
-            emo_map = {
-                "emotion_anxious": "тревожный и ранимый",
-                "emotion_aggressive": "агрессивный",
-                "emotion_cold": "холодный и отстранённый",
-                "emotion_shocked": "в шоке",
-                "emotion_breakdown": "на грани срыва",
-                "emotion_superficial": "поверхностно весёлый"
-            }
-            format_map = {
-                            "format_text": "Текст",
-                            "format_audio": "Аудио"
-                        }
+            
             resistance_raw = data.get("resistance")
             emotion_raw = data.get("emotion")
             format_raw = data.get("format")
@@ -180,29 +159,30 @@ async def session_confirm_handler(
             res_lvl =res_map.get(resistance_raw)
             emo_lvl = emo_map.get(emotion_raw)
             format = format_map.get(format_raw)
-            
+            # Задаем ей состояние
             persona.reset(
                 resistance_level=res_lvl,
                 emotional_state=emo_lvl,
                 format=format
             )
-            
-            
+            # Получаем юзера из БД
             db_user = await get_user(session, telegram_id=callback.from_user.id)
             if not db_user:
+                # Обработка ошибки если он не найден
                 await callback.message.edit_text(NO_USER_TEXT)
                 return
 
             # Пытаемся списать квоту или бонус
             used, is_free = await session_manager.use_session_quota_or_bonus(session, db_user.id)
             if not used:
-                # На всякий случай (если логика где-то сбоит)
+                # Предлагаем купить, если нет ресурсов на сессию
                 await callback.message.answer(
-                    "⚠️ Ошибка списания сессии. Пожалуйста, попробуйте позже или обновите тариф.",
+                    NO_QUOTA_OR_BONUS_FOR_SESSION,
                     reply_markup=subscription_keyboard_when_sessions_left()
                 )
                 return
             
+            # Делегируем менеджеру сессий начать сессию, и запрашиваем у него ее айди
             session_id = await session_manager.start_session(
                 db_session=session,
                 user_id=db_user.id,
@@ -211,7 +191,7 @@ async def session_confirm_handler(
                 resistance=res_lvl,
                 emotion=emo_lvl
             )
-            
+            # Обновляем данные в стейт
             await state.update_data(
                 persona=persona,
                 session_start=datetime.utcnow().isoformat(),
@@ -220,9 +200,7 @@ async def session_confirm_handler(
                 emotion=emo_lvl,
                 format=format
             )
-
-            
-            
+            # Сообщение о начале сессии
             await callback.message.edit_text(
                 SESSION_STARTED_TEXT.format(
                     resistance=res_lvl,
@@ -231,18 +209,11 @@ async def session_confirm_handler(
                     format=format
                 )
             )
+            # Стейт - в сессии
             await state.set_state(MainMenu.in_session)
 
-        case "end_session":
-            await callback.message.edit_text(SESSION_ENDED_AHEAD_TEXT)
-            await state.clear()
-            await callback.message.answer(
-                BACK_TO_MENU_TEXT,
-                reply_markup=main_menu()
-            )
-            await state.set_state(MainMenu.choosing)
-
         case "back_main":
+            # Идем назад
             await callback.message.edit_text(
                 BACK_TO_MENU_TEXT,
                 reply_markup=main_menu()
@@ -255,21 +226,15 @@ async def session_confirm_handler(
 async def session_resistance_handler(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
     if callback.data in ["resistance_medium", "resistance_high"]:
+        # Выбор
         await state.update_data(resistance=callback.data)
         await callback.message.edit_text(
             EMOTION_SELECT_TEXT,
             reply_markup=session_emotion_menu()
         )
         await state.set_state(MainMenu.session_emotion)
-    elif callback.data == "end_session":
-        await callback.message.edit_text(SESSION_ENDED_AHEAD_TEXT)
-        await state.clear()
-        await callback.message.answer(
-            BACK_TO_MENU_TEXT,
-            reply_markup=main_menu()
-        )
-        await state.set_state(MainMenu.choosing)
     elif callback.data == "back_main":
+        # Назад
         await callback.message.edit_text(
             BACK_TO_MENU_TEXT,
             reply_markup=main_menu()
@@ -282,6 +247,7 @@ async def session_resistance_handler(callback: types.CallbackQuery, state: FSMCo
 async def session_emotion_handler(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
     if callback.data.startswith("emotion_"):
+        # Выбор
         await state.update_data(emotion=callback.data)
         await callback.message.edit_text(
             FORMAT_SELECT_TEXT,
@@ -289,16 +255,16 @@ async def session_emotion_handler(callback: types.CallbackQuery, state: FSMConte
         )
         await state.set_state(MainMenu.session_format)
     elif callback.data == "back_to_resistance":
+        # Вернутся к выбору сопротивления
         await callback.message.edit_text(
             SESSION_RESISTANCE_SELECT,
             reply_markup=session_resistance_menu()
         )
         await state.set_state(MainMenu.session_resistance)
 
-
-from core.persones.persona_loader import load_personas
-
-# --- Выбор формата ---
+# --- Выбор формата --- 
+# На самом деле думаю убрать это. Просто если риходит голосовая от пользователя - если тариф 
+# позволяет - обрабатываем, если нет, предалагем перейти на тариф где есть гс
 @router.callback_query(MainMenu.session_format)
 async def session_format_handler(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -309,7 +275,7 @@ async def session_format_handler(callback: types.CallbackQuery, state: FSMContex
         persona_names = list(personas.keys())
 
         await callback.message.edit_text(
-            "Выберите персонажа для сессии:",
+            CHOOSE_PERSONE_FOR_SESSION_TEXT,
             reply_markup=persona_selection_menu(persona_names)
         )
         await state.set_state(MainMenu.session_persona)
@@ -343,5 +309,3 @@ async def session_persona_handler(callback: types.CallbackQuery, state: FSMConte
             reply_markup=session_format_menu()
         )
         await state.set_state(MainMenu.session_format)
-
-import random
