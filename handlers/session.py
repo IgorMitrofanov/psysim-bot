@@ -51,6 +51,8 @@ async def reset_session_handler(
     session: AsyncSession,
     session_manager: SessionManager
 ):
+    
+    # TODO: Даже после ресета, если сообщения персоне были отправлены - она ответит потом юзеру. надо это исправить как то
     data = await state.get_data()
     session_id = data.get("session_id")
 

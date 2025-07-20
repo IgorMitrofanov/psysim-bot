@@ -17,7 +17,7 @@ async def profile_handler(callback: types.CallbackQuery, state: FSMContext, sess
     if not db_user:
         await callback.message.edit_text("Профиль не найден.")
         return
-    total_sessions = await count_user_sessions(session, callback.from_user.id)
+    total_sessions = await count_user_sessions(session, db_user.id)
     user_data = {
         "username": db_user.username or "unknown",
         "telegram_id": db_user.telegram_id,

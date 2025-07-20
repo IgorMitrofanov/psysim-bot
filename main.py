@@ -2,7 +2,7 @@ import asyncio
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-
+from services.subscription_checker import check_subscriptions_expiry
 from config import config, DEFAULT_BOT_PROPERTIES, logger
 from database.models import Base
 from handlers import routers
@@ -25,6 +25,8 @@ async def main():
     dp.message.middleware(DBSessionMiddleware(sessionmaker))
     dp.callback_query.middleware(DBSessionMiddleware(sessionmaker))
     
+    # Фоновая задача по проверке подписок
+    asyncio.create_task(check_subscriptions_expiry(bot, sessionmaker))
     # Инициализация менеджера сессий
     session_manager = SessionManager(bot)
     dp['session_manager'] = session_manager

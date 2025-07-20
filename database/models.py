@@ -59,6 +59,8 @@ class Session(Base):
 
     report_text = Column(Text, nullable=True)  # Итоговый отчёт по сессии (если есть)
     tokens_spent = Column(Integer, nullable=True)  # Если считаешь расход токенов
+    
+    is_rnd = Column(Boolean, default=False) # Для отслеживания случайная сессия или нет, думаю для ачивок и статистики пригодиться
 
     emotional = Column(String, nullable=True)  # Вместо "emotial" — исправил опечатку
     resistance_level = Column(String, nullable=True)  # "средний", "высокий"

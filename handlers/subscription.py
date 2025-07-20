@@ -7,8 +7,10 @@ from texts.subscription_texts import (
     TARIFF_MENU_TEXT,
     TARIFF_SUCCESS_TEMPLATE,
     TARIFF_FAIL_FUNDS,
-    TARIFF_USER_NOT_FOUND
+    TARIFF_USER_NOT_FOUND,
+    UNKNOWN_TARIFF
 )
+from config import config, logger
 import datetime
 from database.models import Order
 from services.referral_manager import process_referral_bonus_after_payment
@@ -28,26 +30,12 @@ async def buy_tariff_menu(callback: types.CallbackQuery):
 @router.callback_query(lambda c: c.data.startswith("activate_"))
 async def activate_tariff_callback(callback: types.CallbackQuery, session: AsyncSession, bot: Bot):
     # callback.data: activate_start, activate_pro, activate_unlimited
-    tariff_map = {
-        "activate_start": ("start", 590, 7),
-        "activate_pro": ("pro", 1490, 30),
-        "activate_unlimited": ("unlimited", 2490, 30)
-    }
-    
-    data = callback.data
-    if data not in tariff_map:
-        await callback.answer("❌ Неизвестный тариф", show_alert=True)
+    key = callback.data.removeprefix("activate_")
+    if key not in config.TARIFF_MAP:
+        await callback.answer(UNKNOWN_TARIFF, show_alert=True)
         return
     
-    tariff_name, cost, days = tariff_map[data]
-
-    data = callback.data
-    if data not in tariff_map:
-        await callback.answer("❌ Неизвестный тариф", show_alert=True)
-        return
-
-    tariff, cost, days = tariff_map[data]
-
+    tariff_name, cost, days, _ = config.TARIFF_MAP[key]
     user = await get_user(session, telegram_id=callback.from_user.id)
     if not user:
         await callback.answer(TARIFF_USER_NOT_FOUND, show_alert=True)
@@ -59,7 +47,7 @@ async def activate_tariff_callback(callback: types.CallbackQuery, session: Async
 
     # Списываем баланс и обновляем тариф
     user.balance -= cost
-    user.active_tariff = tariff_name.lower()  # или как у тебя в User.active_tariff
+    user.active_tariff = tariff_name.lower()
     user.tariff_expires = datetime.datetime.utcnow() + datetime.timedelta(days=days)
 
     # Создаём запись о заказе
@@ -77,7 +65,7 @@ async def activate_tariff_callback(callback: types.CallbackQuery, session: Async
 
     await session.commit()
 
-    text = TARIFF_SUCCESS_TEMPLATE.format(tariff=tariff.capitalize(), days=days, cost=cost)
+    text = TARIFF_SUCCESS_TEMPLATE.format(tariff=tariff_name.capitalize(), days=days, cost=cost)
     # Ответить в чат с профилем и клавиатурой профиля
     await callback.message.edit_text(text, reply_markup=profile_keyboard())
     await callback.answer() 

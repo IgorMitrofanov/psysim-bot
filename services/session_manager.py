@@ -28,7 +28,8 @@ class SessionManager:
         is_free: bool,
         persona_name:str,
         resistance:str,
-        emotion:str
+        emotion:str,
+        is_rnd: bool=False, # Случайная ли сессия (настройки сопротивления, эмоции и персонаж). Флаг заложен для ачивок и статистики
     ) -> int:
         """Создает новую сессию в БД и возвращает её ID"""
         # Длина сессии из конфига приложения
@@ -41,6 +42,7 @@ class SessionManager:
             expires_at=expires_at,
             is_active=True,
             is_free=is_free,
+            is_rnd=is_rnd,
             emotional=emotion,
             resistance_level=resistance,
             persona_name=persona_name

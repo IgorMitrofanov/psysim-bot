@@ -15,13 +15,10 @@ def profile_text(data: dict) -> str:
         base += f"Активна до: {data['tariff_expires']}\n"
 
     base += (
-        f"Сессий пройдено: {data['sessions_done']}\n"
+        f"Сессий пройдено: {data['sessions_done']}\n\n"
         f"Бонусные сессии: <b>{data['bonus_balance']}</b>\n"
         f"Баланс: <b>{data['balance']} ₽</b>\n"
     )
-
-    if data["sessions_done"] > 0:
-        base += f"Последний сценарий: {data['last_scenario']}"
 
     return base
 

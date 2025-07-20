@@ -12,7 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.crud import get_user
 from texts.session_texts import (
     NO_USER_TEXT,
-    RANDOM_SESSION_STARTED_TEXT
+    RANDOM_SESSION_STARTED_TEXT,
+    NO_QUOTA_OR_BONUS_FOR_SESSION,
+    resistance_options,
+    emotion_options,
+    NO_PERSONES_TEXT
 )
 from services.session_manager import SessionManager
 from core.persones.persona_loader import load_personas
@@ -37,29 +41,22 @@ async def random_session_handler(
     used, is_free = await session_manager.use_session_quota_or_bonus(session, db_user.id)
     if not used:
         await callback.message.edit_text(
-            "⚠️ Ошибка списания сессии. Попробуйте позже.",
+            NO_QUOTA_OR_BONUS_FOR_SESSION,
             reply_markup=subscription_keyboard_when_sessions_left()
         )
         return
-
-    # Рандомные значения
-    resistance_options = ["средний", "высокий"]
-    emotion_options = [
-        "тревожный и ранимый", "агрессивный", "холодный и отстранённый",
-        "в шоке", "на грани срыва", "поверхностно весёлый"
-    ]
-
+    # Загрузка списка персонажей
     personas = load_personas()
     persona_names = list(personas.keys())
     if not persona_names:
-        await callback.message.edit_text("Нет доступных персонажей.")
+        await callback.message.edit_text(NO_PERSONES_TEXT)
         return
-
+    # Устанавливаем случайные параметры
     resistance = random.choice(resistance_options)
     emotion = random.choice(emotion_options)
     persona_name = random.choice(persona_names)
     persona_data = personas[persona_name]
-
+    
     persona = PersonaBehavior(persona_data)
     persona.reset(
         resistance_level=resistance,
@@ -72,6 +69,7 @@ async def random_session_handler(
         db_session=session,
         user_id=db_user.id,
         is_free=is_free,
+        is_rnd=True,
         persona_name=persona_name,
         resistance=resistance,
         emotion=emotion
