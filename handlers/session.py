@@ -99,7 +99,7 @@ async def session_interaction_handler(
         tokens_used=len(message.text) // 4
     )
 
-    # Получаем решение и ответ от персонажа
+    # Получаем решение и ответ от персонажа TODO: Хотелось бы здесь после каждого сообщения юзера ждать секунд 10, при этом каждое сообщение класть в буфер. и чтобы мы работали с буфером сообщений как с одним - бывает пишут несколькими сообщениями - так живость модели повысится
     decision, response, tokens_used = await persona.send(message.text)
 
     # Обработка решения
@@ -107,7 +107,7 @@ async def session_interaction_handler(
         case "silence":
             await message.answer("<code>Персонаж предпочел не отвечать на это.</code>")
             await session_manager.add_message_to_history(
-                db_user.id, "[silence]", is_user=False, tokens_used=0
+                db_user.id, "[silence]", is_user=False, tokens_used=tokens_used
             )
 
         case "disengage":
@@ -122,13 +122,13 @@ async def session_interaction_handler(
                 await state.clear()
                 await state.set_state(MainMenu.choosing)
 
-
         case "respond" | "escalate" | "self_report":
             if response:
                 await message.answer(response)
                 await session_manager.add_message_to_history(
                     db_user.id, response, is_user=False, tokens_used=tokens_used
                 )
+                # TODO: После ответа персонажа надо включать таймер который будет регировать на молчание пользователя
             else:
                 await message.answer("<code>Персонаж не смог ответить на сообщение.</code>")
         
@@ -136,8 +136,6 @@ async def session_interaction_handler(
             await message.answer("<code>Произошла ошибка в поведении персонажа.</code>")
             logger.warning(f"Неизвестное решение персонажа: {decision}")
 
-        
-        
 # --- Старт сессии ---
 @router.callback_query(lambda c: c.data == "main_start_session")
 async def main_start_session_handler(
