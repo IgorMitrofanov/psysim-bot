@@ -26,88 +26,6 @@ class PersonaDecisionSystem:
         self.persona_data = persona_data
         self.decision_cache = {}
         
-        # Базовые вероятности решений
-        self.base_probabilities = {
-            'respond': 0.5,
-            'escalate': 0.15,
-            'self_report': 0.1,
-            'silence': 0.2,
-            'disengage': 0.05
-        }
-        
-        # Модификаторы для разных эмоциональных состояний
-        self.emotion_modifiers = {
-            'emotion_anxious': {
-                'respond': -0.1,
-                'escalate': -0.2,
-                'self_report': +0.3,
-                'silence': +0.2,
-                'disengage': +0.1
-            },
-            'emotion_aggressive': {
-                'respond': +0.1,
-                'escalate': +0.3,
-                'self_report': -0.2,
-                'silence': -0.1,
-                'disengage': +0.1
-            },
-            'emotion_cold': {
-                'respond': -0.2,
-                'escalate': -0.1,
-                'self_report': -0.1,
-                'silence': +0.3,
-                'disengage': +0.1
-            },
-            'emotion_shocked': {
-                'respond': -0.3,
-                'escalate': +0.1,
-                'self_report': +0.2,
-                'silence': +0.3,
-                'disengage': +0.2
-            },
-            'emotion_breakdown': {
-                'respond': -0.4,
-                'escalate': +0.4,
-                'self_report': +0.2,
-                'silence': +0.1,
-                'disengage': +0.3
-            },
-            'emotion_superficial': {
-                'respond': +0.2,
-                'escalate': -0.3,
-                'self_report': -0.2,
-                'silence': -0.1,
-                'disengage': -0.1
-            },
-            'emotion_neutral': {},
-            'emotion_depressed': {
-                'respond': -0.1,
-                'escalate': -0.2,
-                'self_report': +0.3,
-                'silence': +0.2,
-                'disengage': +0.1
-            }
-        }
-        
-        # Модификаторы для разных уровней сопротивления
-        self.resistance_modifiers = {
-            'resistance_high': {
-                'respond': -0.2,
-                'escalate': +0.3,
-                'self_report': -0.1,
-                'silence': +0.2,
-                'disengage': +0.2
-            },
-            'resistance_medium': {},
-            'resistance_low': {
-                'respond': +0.2,
-                'escalate': -0.1,
-                'self_report': +0.1,
-                'silence': -0.1,
-                'disengage': -0.1
-            }
-        }
-        
         logger.info(f"Initialized PersonaDecisionSystem for {persona_data['persona']['name']}")
 
     async def process_user_message(
@@ -207,12 +125,13 @@ class PersonaDecisionSystem:
                 logger.info(f"LLM decision: {llm_decision} for {state_desc}")
                 return llm_decision, tokens_used
             else:
-                logger.warning(f"Invalid LLM decision: {llm_decision}. Falling back to probabilistic")
+                logger.warning(f"Invalid LLM decision: {llm_decision}. Falling back to default 'respond'")
         
-        decision = self._get_probabilistic_decision(resistance_level, emotional_state)
+        # Фолбэк решение, если LLM не используется или вернул недопустимое значение
+        decision = 'respond'
         self.decision_cache[cache_key] = decision
         
-        logger.info(f"Probabilistic decision: {decision} for {state_desc}")
+        logger.info(f"Fallback decision: {decision} for {state_desc}")
         return decision, tokens_used
 
     def _get_human_readable_state(self, resistance: str, emotion: str) -> str:
@@ -244,50 +163,6 @@ class PersonaDecisionSystem:
         except Exception as e:
             logger.error(f"LLM decision error: {str(e)}", exc_info=True)
             return None, tokens if 'tokens' in locals() else 0
-
-    def _get_probabilistic_decision(
-        self,
-        resistance_level: str,
-        emotional_state: str
-    ) -> str:
-        """Принимает решение на основе вероятностей с модификаторами"""
-        probs = self.base_probabilities.copy()
-        
-        # Применяем модификаторы эмоций
-        emotion_mod = self.emotion_modifiers.get(emotional_state, {})
-        for k, v in emotion_mod.items():
-            probs[k] = max(0, min(1, probs[k] + v))
-        
-        # Применяем модификаторы сопротивления
-        resistance_mod = self.resistance_modifiers.get(resistance_level, {})
-        for k, v in resistance_mod.items():
-            probs[k] = max(0, min(1, probs[k] + v))
-        
-        # Нормализуем вероятности
-        total = sum(probs.values())
-        if total == 0:
-            logger.error("All probabilities zero after modifiers!")
-            return 'respond'
-            
-        normalized = {k: v/total for k, v in probs.items()}
-        
-        logger.debug(
-            f"Decision probabilities for {emotional_state}/{resistance_level}:\n"
-            f"Base: {self.base_probabilities}\n"
-            f"Modified: {normalized}"
-        )
-        
-        # Выбираем решение
-        rand = random.random()
-        cumulative = 0
-        for decision, prob in normalized.items():
-            cumulative += prob
-            if rand < cumulative:
-                logger.debug(f"Selected decision: {decision} (random value: {rand:.3f})")
-                return decision
-        
-        logger.error("Probability selection failed, fallback to 'respond'")
-        return 'respond'
 
     def _build_meta_prompt(
         self,
