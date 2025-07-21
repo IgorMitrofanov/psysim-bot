@@ -57,12 +57,7 @@ async def random_session_handler(
     persona_name = random.choice(persona_names)
     persona_data = personas[persona_name]
     
-    persona = PersonaBehavior(persona_data)
-    persona.reset(
-        resistance_level=resistance,
-        emotional_state=emotion,
-        format="Текст"
-    )
+    persona = PersonaBehavior(persona_data, resistance_level=resistance, emotional_state=emotion, format="Текст")
 
     # Создаем сессию
     session_id = await session_manager.start_session(

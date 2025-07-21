@@ -4,16 +4,16 @@ import asyncio
 
 client = OpenAI(api_key=config.AI_API_KEY)
 
-def sync_get_response(messages):
+def sync_get_response(messages, temperature):
     response = client.chat.completions.create(
         model=config.DEFAULT_MODEL,
         messages=messages,
-        temperature=0.9,
+        temperature=temperature,
     )
     reply = response.choices[0].message.content
     tokens = response.usage.total_tokens if response.usage else 0
     return reply, tokens
 
-async def get_response(messages):
+async def get_response(messages, temperature=0.9):
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, sync_get_response, messages)
+    return await loop.run_in_executor(None, sync_get_response, messages, temperature)

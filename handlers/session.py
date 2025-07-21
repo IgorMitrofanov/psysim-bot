@@ -38,7 +38,6 @@ from aiogram.types import Message
 from services.session_manager import SessionManager
 from aiogram.filters import Command
 from config import logger
-
 router = Router(name="session")
 
 # ВАЖНО: Здесь используется абстрактный менеджер работы с сессиями, он работает с user_id [int] - это айди из БД, не телеграм айди!
@@ -76,81 +75,69 @@ async def session_interaction_handler(
     session: AsyncSession,
     session_manager: SessionManager
 ):
-    try:
-        data = await state.get_data()
-        persona: PersonaBehavior = data.get("persona")
-        session_id = data.get("session_id")
-        
-        if not persona or not session_id:
-            await message.answer(PERSONA_NOT_FOUND_TEXT)
-            await state.clear()
-            return
+    data = await state.get_data()
+    persona: PersonaBehavior = data.get("persona")
+    if not persona:
+        await message.answer(PERSONA_NO_FOUND_TEXT)
+        return
 
-        # Проверка активности сессии
-        db_user = await get_user(session, telegram_id=message.from_user.id)
-        if not await session_manager.is_session_active(db_user.id, session):
-            await message.answer(SESSION_END_TEXT)
-            await message.answer(BACK_TO_MENU_TEXT, reply_markup=main_menu())
-            await state.clear()
-            await state.set_state(MainMenu.choosing)
-            return
+    db_user = await get_user(session, telegram_id=message.from_user.id)
 
-        # Добавляем сообщение в историю
-        await session_manager.add_message_to_history(
-            session_id,
-            message.text,
-            is_user=True,
-            tokens_used=len(message.text) // 4
-        )
+    # Проверяем, активна ли ещё сессия
+    if not await session_manager.is_session_active(db_user.id, session):
+        await message.answer(SESSION_END_TEXT)
+        await message.answer(BACK_TO_MENU_TEXT, reply_markup=main_menu())
+        await state.clear()
+        await state.set_state(MainMenu.choosing)
+        return
 
-        # Обработка сообщения от персонажа
-        result = await persona.send(message.text)
-        
-        if result is not None:  # Персонаж ответил
-            response, tokens_used = result
-            # Форматированый вывод - депрекейтед
-            # formatted_response = f"""
-            # <b>{persona.name}</b>:
-            # <i>{response}</i>
-            # """
-            await message.answer(response, parse_mode="HTML")
-            
+    # Логируем пользовательское сообщение
+    await session_manager.add_message_to_history(
+        db_user.id,
+        message.text,
+        is_user=True,
+        tokens_used=len(message.text) // 4
+    )
+
+    # Получаем решение и ответ от персонажа
+    decision, response, tokens_used = await persona.send(message.text)
+
+    # Обработка решения
+    match decision:
+        case "silence":
+            await message.answer("<code>Персонаж предпочел не отвечать на это.</code>")
             await session_manager.add_message_to_history(
-                session_id,
-                response,
-                is_user=False,
-                tokens_used=tokens_used
+                db_user.id, "[silence]", is_user=False, tokens_used=0
             )
-        else:  # Персонаж молчит
-            silence_notification = f"""
-            <b>🔇 {persona.name} молчит</b>
-            <code>Персонаж решил не отвечать на это сообщение</code>
-            """
-            await message.answer(silence_notification, parse_mode="HTML")
-            
-            silence_result = await persona.check_silence()
-            if silence_result is not None:
-                silence_response, silence_tokens = silence_result
-                formatted_silence = f"""
-                <b>{persona.name}</b> (после паузы):
-                <i>{silence_response}</i>
-                """
-                await message.answer(formatted_silence, parse_mode="HTML")
+
+        case "disengage":
+            if response:
+                await message.answer(response)
                 await session_manager.add_message_to_history(
-                    session_id,
-                    silence_response,
-                    is_user=False,
-                    tokens_used=silence_tokens
+                    db_user.id, response, is_user=False, tokens_used=tokens_used
                 )
+            session_id = data.get("session_id")
+            if session_id:
+                await session_manager.end_session(user_id=db_user.id, db_session=session, session_id=session_id)
+                await state.clear()
+                await state.set_state(MainMenu.choosing)
 
-        # Обновляем активность сессии (если метод существует)
-        if hasattr(session_manager, 'update_session_activity'):
-            await session_manager.update_session_activity(session_id)
 
-    except Exception as e:
-        logger.error(f"Session error: {e}")
-        await message.answer("Произошла ошибка в сессии. Попробуйте позже.")
+        case "respond" | "escalate" | "self_report":
+            if response:
+                await message.answer(response)
+                await session_manager.add_message_to_history(
+                    db_user.id, response, is_user=False, tokens_used=tokens_used
+                )
+            else:
+                await message.answer("<code>Персонаж не смог ответить на сообщение.</code>")
+        
+        case _:
+            await message.answer("<code>Произошла ошибка в поведении персонажа.</code>")
+            logger.warning(f"Неизвестное решение персонажа: {decision}")
 
+        
+        
 # --- Старт сессии ---
 @router.callback_query(lambda c: c.data == "main_start_session")
 async def main_start_session_handler(
@@ -191,8 +178,6 @@ async def session_confirm_handler(
                 await callback.message.edit_text("Персонаж не найден. Попробуйте снова.")
                 await state.set_state(MainMenu.session_format)
                 return
-            # Создаем "персону"
-            persona = PersonaBehavior(persona_data)
             
             resistance_raw = data.get("resistance")
             emotion_raw = data.get("emotion")
@@ -201,12 +186,8 @@ async def session_confirm_handler(
             res_lvl =res_map.get(resistance_raw)
             emo_lvl = emo_map.get(emotion_raw)
             format = format_map.get(format_raw)
-            # Задаем ей состояние
-            persona.reset(
-                resistance_level=res_lvl,
-                emotional_state=emo_lvl,
-                format=format
-            )
+            # Создаем "персону" и задаем ей состояние 
+            persona = PersonaBehavior(persona_data, resistance_level=res_lvl, emotional_state=emo_lvl, format=format)
             # Получаем юзера из БД
             db_user = await get_user(session, telegram_id=callback.from_user.id)
             if not db_user:
