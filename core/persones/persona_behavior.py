@@ -43,13 +43,7 @@ class PersonaBehavior:
         total_tokens = 0
         logger.debug(f"Received message from user: {user_message[:100]}...")
 
-        # 1. Обновляем мета-память если нужно
-        # if self._should_update_memory():
-        #     _, memory_tokens = await self.meta_memory.update_memory(self.history)
-        #     total_tokens += memory_tokens
-        #     logger.debug(f"Meta-memory updated. Tokens used: {memory_tokens}")
-
-        # 2. Обрабатываем сообщение через систему принятия решений
+        # Обрабатываем сообщение через систему принятия решений
         decision, processed_msg, decision_tokens = await self.decision_system.process_user_message(
             user_message,
             self.resistance_level,
@@ -60,16 +54,7 @@ class PersonaBehavior:
         
         logger.debug(f"Decision: {decision}, processed_msg: {'None' if processed_msg is None else processed_msg[:50]}...")
         
-        # Обработка специальных решений
-        if decision == 'silence':
-            logger.info(f"{self.name} decided to remain silent")
-            return decision, None, total_tokens
-            
-        if decision == 'disengage':
-            logger.info(f"{self.name} decided to disengage. Final message: {processed_msg[:100]}...")
-            return decision, processed_msg, total_tokens
-        
-        # 3. Подготовка истории для LLM
+        # Системный промпт добавляется единожды
         if not any(msg["role"] == "system" for msg in self.history):
             system_prompt = build_prompt(
                 self.persona_data,
@@ -78,31 +63,50 @@ class PersonaBehavior:
             )
             self.history.insert(0, {"role": "system", "content": system_prompt})
             logger.debug("Added system prompt to history")
+        
+        # Обработка специальных решений
+        if decision == 'silence':
+            logger.info(f"{self.name} decided to remain silent")
+            self.history.append({"role": "assistant", "content": "*молчание, ваш персонаж предпочел не отвечать*"})
+            return decision, None, total_tokens
+        
+        # if decision == 'escalate':
+        #     logger.info(f"{self.name} decided to escalate. Final message: {processed_msg[:100]}...")
+        #     return decision, processed_msg, total_tokens
+        
+        # if decision == 'self_report':
+        #     logger.info(f"{self.name} decided to self_report. Final message: {processed_msg[:100]}...")
+        #     return decision, processed_msg, total_tokens
+        
+        # if decision == 'response':
+        #     self.history.append({"role": "user", "content": processed_msg})
+        #     logger.debug(f"Added processed message to history: {processed_msg[:50]}...")
             
+        else:
         # Добавляем обработанное сообщение в историю
-        if processed_msg:
-            self.history.append({"role": "user", "content": processed_msg})
-            logger.debug(f"Added processed message to history: {processed_msg[:50]}...")
-        
-        # 4. Имитация задержки ответа
-        delay = random.uniform(self.min_delay, self.max_delay)
-        logger.debug(f"Simulating thinking delay: {delay:.2f}s")
-        await asyncio.sleep(delay)
-        
-        # 5. Получение ответа от LLM
-        logger.debug(f"Sending to LLM. Last messages: {json.dumps(self.history[-6:], ensure_ascii=False)}")
-        response, response_tokens = await get_response(self.history[-6:])
-        total_tokens += response_tokens
-        
-        logger.debug(f"Received response from LLM. Tokens: {response_tokens}, response: {response[:100]}...")
-        
-        # 6. Обновление истории
-        self.history.append({"role": "assistant", "content": response})
-        logger.debug(f"Added assistant response to history. Total history length: {len(self.history)}")
-        
-        
-        logger.info(f"{self.name} response complete. Total tokens used: {total_tokens}")
-        return decision, response, total_tokens
+            if processed_msg:
+                self.history.append({"role": "user", "content": processed_msg})
+                logger.debug(f"Added message to history: {processed_msg[:50]}...")
+            
+            # 4. Имитация задержки ответа
+            delay = random.uniform(self.min_delay, self.max_delay)
+            logger.info(f"Simulating thinking delay: {delay:.2f}s")
+            await asyncio.sleep(delay)
+            
+            # 5. Получение ответа от LLM
+            logger.debug(f"Sending to LLM. Last messages: {json.dumps(self.history[-6:], ensure_ascii=False)}")
+            response, response_tokens = await get_response(self.history[-6:])
+            total_tokens += response_tokens
+            
+            logger.debug(f"Received response from LLM. Tokens: {response_tokens}, response: {response[:100]}...")
+            
+            # 6. Обновление истории
+            self.history.append({"role": "assistant", "content": response})
+            logger.debug(f"Added assistant response to history. Total history length: {len(self.history)}")
+            
+            
+            logger.info(f"{self.name} response complete. Total tokens used: {total_tokens}")
+            return decision, response, total_tokens
 
     async def update_state(self, resistance_level: str = None, emotional_state: str = None):
         """Обновляет состояние персонажа"""

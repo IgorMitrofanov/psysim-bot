@@ -164,26 +164,9 @@ class PersonaDecisionSystem:
             # Если LLM не смогла сгенерировать подсказку, возвращаем базовое сообщение
             if not salt_phrase.strip():
                 return base_message, 0
+
                 
-            # Используем LLM для финального оформления сообщения
-            system_prompt = f"""
-            Ты помогаешь пациенту завершить терапевтическую сессию. 
-            Основываясь на базовом сообщении и инструкции, сгенерируй финальную версию.
-            Сохрани суть, но сделай более персонализированным и естественным.
-            """
-            
-            final_msg, llm_tokens = await self._call_llm(
-                system_prompt=system_prompt,
-                user_prompt=prompt,
-                temperature=0.7,
-                max_tokens=100
-            )
-            
-            # Если что-то пошло не так, возвращаем хотя бы базовое сообщение
-            if not final_msg.strip():
-                return base_message, llm_tokens
-                
-            return final_msg, llm_tokens + (len(prompt) // 4)
+            return prompt, (len(prompt) // 4)
             
         except Exception as e:
             logger.error(f"Error salting disengage message: {str(e)}", exc_info=True)
@@ -242,30 +225,8 @@ class PersonaDecisionSystem:
                 
             prompt = "\n\n".join(prompt_parts)
             
-            # Системный промпт в зависимости от стратегии
-            system_prompt = f"""
-            Ты помогаешь пациенту сформировать ответ в психотерапии.
-            Основываясь на предоставленной информации, сгенерируй финальную версию сообщения.
-            Учитывай:
-            - Стратегию: {strategy}
-            - Эмоциональное состояние: {emotional_state}
-            - Уровень сопротивления: {resistance_level}
-            - Историю взаимодействия
-            """
-            
-            # Запрашиваем у LLM финальную версию сообщения
-            final_msg, llm_tokens = await self._call_llm(
-                system_prompt=system_prompt,
-                user_prompt=prompt,
-                temperature=0.7,
-                max_tokens=150
-            )
-            
-            # Если что-то пошло не так, возвращаем fallback
-            if not final_msg.strip():
-                return base_message or user_message, llm_tokens
                 
-            return final_msg, llm_tokens + (len(prompt) // 4)
+            return prompt, (len(prompt) // 4)
             
         except Exception as e:
             logger.error(f"Error in _salt_message_generic: {str(e)}", exc_info=True)
@@ -394,7 +355,7 @@ class PersonaDecisionSystem:
         2. escalate (эмоциональная реакция) - если затронуты триггеры или сопротивление растет
         3. self_report (самоанализ) - если терапевт запрашивает рефлексию или есть возможность раскрыться
         4. silence (пауза) - проверка реакции терапевта, или при эмоциях, избегай без веской причины
-        5. disengage (завершение) - если сессия исчерпана или эмоционально перегружен, собеседник агрессивен, груб, незаинтересован
+        5. disengage (завершение) - если сессия исчерпана или эмоционально перегружен, собеседник агрессивен, груб, незаинтересован. не уходи сразу после приветствия, дай шанс
         
         
         Про персонажа:
@@ -402,13 +363,17 @@ class PersonaDecisionSystem:
         - Типичные самоотчеты: {', '.join(self.persona_data.get('self_reports', [])) if self.persona_data.get('self_reports') else 'нет'}
         - Триггеры: {', '.join(self.persona_data.get('triggers', [])) if self.persona_data.get('triggers') else 'нет'}
         
+        Внимание: в исторической переписке:
+        - ASSISTANT - это пациент (персонаж, которого мы изображаем)
+        - USER - это терапевт (собеседник пациента)
+        
         История последних сообщений:
         {history_text}
         
         Новое сообщение терапевта:
         "{user_message}"
         
-        Сгенерируй только саму инструкцию для пациента, без пояснений.
+        Сгенерируй только саму **инструкцию** для пациента, без пояснений. Это важно, не реплику - а инструкцию, как эту реплику сделать.
         Учитывай особенности персонажа, его защитные механизмы и текущее состояние.
         
         Примеры хороших инструкций:
@@ -421,7 +386,7 @@ class PersonaDecisionSystem:
         response, _ = await self._call_llm(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            temperature=0.5  # Более детерминированные ответы
+            temperature=0.  # Более детерминированные ответы
         )
         
         return response
@@ -430,8 +395,8 @@ class PersonaDecisionSystem:
         """Получает решение от LLM с использованием универсального метода"""
         system_prompt = """
         Ты принимаешь решения для пациента на психотерапии. Выбери ОДНУ стратегию реакции:
-        - respond: обычный ответ
-        - escalate: эмоционально усиленный ответ
+        - respond: обычный ответ. Использоваться для развития персонажа
+        - escalate: эмоционально усиленный ответ. Не используй слишком часто
         - self_report: ответ с самоанализом
         - silence: игнорировать сообщение
         - disengage: завершить сеанс
@@ -442,7 +407,7 @@ class PersonaDecisionSystem:
         decision, tokens = await self._call_llm(
             system_prompt=system_prompt,
             user_prompt=prompt,
-            temperature=1.1  # Низкая температура для более предсказуемых решений
+            temperature=0.4  
         )
         
         if decision not in ('respond', 'escalate', 'self_report', 'silence', 'disengage'):
@@ -473,16 +438,32 @@ class PersonaDecisionSystem:
         # Форматирование ключевых психологических характеристик
         def format_items(items):
             return "\n".join(f"- {item}" for item in items) if items else "нет данных"
-            
+        
+        def format_list(items):
+            return "\n".join(f"- {item}" for item in items) if items else "—"
+    
+        self_reports_text = format_list(self.persona_data.get("self_reports", []))
+        escalation_text = format_list(self.persona_data.get("escalation", []))
         current_symptoms = "\n".join(f"{k}: {v}" for k,v in self.persona_data.get('current_symptoms', {}).items())
         schemas = format_items(profile.get('predominant_schemas', []))
         defenses = "\n".join(f"- {k}: {v}" for k,v in profile.get('defense_mechanisms', {}).items())
         triggers = format_items(self.persona_data.get('triggers', []))
+        rules_text = format_list(self.persona_data.get("behaviour_rules", []))
+        
+        tone_data = self.persona_data.get("tone", {})
+        tone_text = f"""
+        - базовый стиль:  
+        { tone_data.get("baseline", "—")}
+        - защитные реакции:
+        {tone_data.get("defensive_reaction", "—")}
+        """
         
         prompt = f"""
         # Психологический профиль пациента
         Имя: {persona.get('name', 'Неизвестный')}, возраст: {persona.get('age', '?')} лет
         Биография: {background}
+        
+        ВАЖНО: При проявлении агрессии в сообщениях терапевта, не желание вам помочь, отстаренности -> disengage
         
         ## Текущее состояние:
         - Эмоциональное: {emotion} (триггеры: {triggers})
@@ -498,6 +479,9 @@ class PersonaDecisionSystem:
         История последних сообщений (макс. 3):
         {history_text}
         
+        Учитывай контекст диалога, старайся не повторяться и разиваться (смотреть историю сообщений - ты "assistant" - пациент, "user" - психотерапевт)
+        
+        
         Последнее сообщение терапевта:
         "{context}"
         
@@ -505,11 +489,23 @@ class PersonaDecisionSystem:
         Учитывая психологический профиль, текущее состояние и историю взаимодействия, как следует реагировать?
         
         Доступные стратегии:
-        1. respond (стандартный ответ) - если диалог идет нормально
-        2. escalate (эмоциональная реакция) - если затронуты триггеры или сопротивление растет
-        3. self_report (самоанализ) - если терапевт запрашивает рефлексию или есть возможность раскрыться
-        4. silence (пауза) - если нужно время для обработки или проверка реакции терапевта
-        5. disengage (завершение) - если сессия исчерпана или эмоционально перегружен
+        1. respond (стандартный ответ) - если диалог идет нормально, развивается терапия
+        2. escalate (эмоциональная реакция) - если затронуты триггеры или сопротивление растет. ниже есть база
+        3. self_report (самоанализ) - если терапевт запрашивает рефлексию или есть возможность раскрыться. ниже есть база
+        4. silence (пауза) - нечего ответить, шок, потрясение, издевательно, сарказм
+        5. disengage (завершение) - если сессия исчерпана или эмоционально перегружен, собеседник агрессивен, отстраен, не желает вам помочь, не понимает
+        
+        # база самоотчёты
+        {self_reports_text}    
+
+        # база эскалация  
+        {escalation_text}   
+        
+        # манера общения  
+        {tone_text}
+        
+        # поведенческие правила  
+        {rules_text}
         
         Выбери ОДНУ стратегию, наиболее соответствующую:
         - текущему эмоциональному состоянию ({emotion})
@@ -529,38 +525,98 @@ class PersonaDecisionSystem:
         emotional_state: str,
         history: List[Dict]
     ) -> Tuple[str, int]:
-        """Подсаливание стандартного ответа"""
-        return await self._salt_message_generic(
+        """Подсаливание стандартного ответа с динамическими инструкциями по развитию персонажа"""
+        # Генерируем дополнительные инструкции по развитию персонажа
+        dynamic_instructions, inst_tokens = await self._generate_character_development_instructions(
+            user_message,
+            resistance_level,
+            emotional_state,
+            history
+        )
+        
+        additional_instructions = f"""
+        Основные указания:
+        - Отвечай в роли своего персонажа, не выходи из образа. Ты - пациент.
+        - Используй характерные для персонажа речевые паттерны и манеру общения
+        
+        Выбери что-то одно для создания ответа терапевту от пациента. Твой ответ должн выглядеть как инструкция для ответа терапевту.
+        {dynamic_instructions}
+        
+        Техники терапевтического взаимодействия:
+        - Постепенно раскрывай новые детали своей биографии
+        - Связывай текущие реакции с прошлым опытом
+        - Проявляй характерные для персонажа защитные механизмы естественным образом
+        """
+        
+        result = await self._salt_message_generic(
             base_message=None,
             strategy="basic",
-            user_message=user_message,
-            resistance_level=resistance_level,
-            emotional_state=emotional_state,
-            history=history
-        )
-
-    async def _salt_with_escalation(
-        self,
-        user_message: str,
-        resistance_level: str,
-        emotional_state: str,
-        history: List[Dict]
-    ) -> Tuple[str, int]:
-        """Подсаливание эскалационного ответа"""
-        additional_instructions = """
-        - Используй более эмоциональную лексику
-        - Можешь немного увеличить длину ответа
-        - Прояви сопротивление
-        """
-        return await self._salt_message_generic(
-            base_message=None,
-            strategy="escalate",
             user_message=user_message,
             resistance_level=resistance_level,
             emotional_state=emotional_state,
             history=history,
             additional_instructions=additional_instructions
         )
+        
+        # Суммируем токены (из генерации инструкций + основного запроса)
+        return result[0], result[1] + inst_tokens
+
+    async def _generate_character_development_instructions(
+        self,
+        user_message: str,
+        resistance_level: str,
+        emotional_state: str,
+        history: List[Dict]
+    ) -> Tuple[str, int]:
+        """Генерирует динамические инструкции для развития персонажа на основе истории"""
+        system_prompt = """
+        Ты психологический ассистент, помогающий сформулировать указания для развития персонажа пациента.
+        Проанализируй историю диалога и предложи:
+        1. Какие аспекты биографии стоит раскрыть в ответе
+        2. Какие темы из истории стоит развить
+        3. Какие защитные механизмы естественно проявить
+        4. Какие элементы из прошлого опыта можно связать с текущей ситуацией
+        
+        Сформулируй 3-4 конкретных указания для естественного развития персонажа. Предупреди, что слишком развернутый ответ не нужен.
+        """
+        
+        history_text = "\n".join(
+            f"{msg['role']}: {msg['content']}" for msg in history[-4:]
+        )
+        
+        user_prompt = f"""
+        Контекст персонажа:
+        - Уровень сопротивления: {resistance_level}
+        - Эмоциональное состояние: {emotional_state}
+        - Ключевые моменты биографии: {', '.join(self.persona_data.get('biography', {}).get('key_points', [])) if self.persona_data.get('biography', {}).get('key_points') else 'нет данных'}
+        - Неисследованные темы: {', '.join(self.persona_data.get('unexplored_topics', [])) if self.persona_data.get('unexplored_topics') else 'нет данных'}
+        
+        
+        Предупреди, что слишком развернутый ответ не нужен.
+        Предупредить отвечать в контексте истории сообщений, и не выходить из образа. (смотреть историю сообщений - ты "assistant" - пациент, "user" - психотерапевт)
+        
+        
+        История диалога:
+        {history_text}
+        
+        Последнее сообщение терапевта:
+        "{user_message}"
+        
+        Сгенерируй 3-4 конкретных указания для развития персонажа, например:
+        - "Упомяни случай из подросткового возраста, связанный с текущей темой"
+        - "Прояви характерное для персонажа избегание через изменение темы"
+        - "Раскрой новый аспект отношений с матерью, который ранее не обсуждался"
+        - "Свяжи текущую реакцию с травматическим опытом из прошлого"
+        """
+        
+        response, tokens = await self._call_llm(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=0.5,
+            max_tokens=150
+        )
+        
+        return response.strip(), tokens
 
     async def _salt_with_self_report(
         self,
@@ -569,14 +625,35 @@ class PersonaDecisionSystem:
         emotional_state: str,
         history: List[Dict]
     ) -> Tuple[str, int]:
-        """Подсаливание ответа с самоанализом"""
-        additional_instructions = """
-        Структура ответа:
-        1. Краткая реакция на сообщение
-        2. Анализ своих чувств ("Я почувствовал...")
-        3. Рефлексия ("Это связано с...")
+        """Подсаливание ответа с самоанализом с динамически генерируемыми инструкциями"""
+        # Генерируем дополнительные инструкции на основе истории
+        dynamic_instructions, inst_tokens = await self._generate_self_report_instructions(
+            user_message,
+            resistance_level,
+            emotional_state,
+            history
+        )
+        
+        additional_instructions = f"""
+        Выбери что-то одно для создания ответа терапевту от пациента. Твой ответ должн выглядеть как инструкция для ответа терапевту.
+        
+        История сообщений:
+        {history}
+        
+        Предупреди, что слишком развернутый ответ не нужен.
+        Предупредить отвечать в контексте истории сообщений, и не выходить из образа. (смотреть историю сообщений - ты "assistant" - пациент, "user" - психотерапевт)
+
+        
+        Динамические указания:
+        {dynamic_instructions}
+        
+        Важно:
+        - Не забывай, ты в роли пациента
+        - Используй характерные для персонажа фразы из его самоотчетов
+        - Сохраняй естественность речи
         """
-        return await self._salt_message_generic(
+        
+        result = await self._salt_message_generic(
             base_message=None,
             strategy="self_report",
             user_message=user_message,
@@ -585,27 +662,168 @@ class PersonaDecisionSystem:
             history=history,
             additional_instructions=additional_instructions
         )
+        
+        # Суммируем токены (из генерации инструкций + основного запроса)
+        return result[0], result[1] + inst_tokens
 
-    async def _salt_disengage_message(
+    async def _salt_with_escalation(
         self,
-        base_message: str,
         user_message: str,
         resistance_level: str,
         emotional_state: str,
         history: List[Dict]
     ) -> Tuple[str, int]:
-        """Подсаливание сообщения о завершении"""
-        additional_instructions = """
-        - Сохрани суть базового сообщения
-        - Сделай его более персонализированным
-        - Учитывай эмоциональное состояние
+        """Подсаливание эскалационного ответа с динамически генерируемыми инструкциями"""
+        # Генерируем дополнительные инструкции на основе истории
+        dynamic_instructions, inst_tokens = await self._generate_escalation_instructions(
+            user_message,
+            resistance_level,
+            emotional_state,
+            history
+        )
+        
+        additional_instructions = f"""
+
+        Выбери что-то одно для создания ответа терапевту от пациента. Твой ответ должн выглядеть как инструкция для ответа терапевту.
+        Динамические указания:
+        {dynamic_instructions}
+        
+        Предупреди, что слишком развернутый ответ не нужен.
+        Предупредить отвечать в контексте истории сообщений, и не выходить из образа. (смотреть историю сообщений - ты "assistant" - пациент, "user" - психотерапевт)
+        
+        История сообщений:
+        {history}
+        
+        Особенности эскалации:
+        - Учитывай текущий уровень сопротивления: {resistance_level}
+        - Эмоциональное состояние: {emotional_state}
+        - Используй характерные для персонажа триггеры и защитные механизмы
         """
-        return await self._salt_message_generic(
-            base_message=base_message,
-            strategy="disengage",
+        
+        result = await self._salt_message_generic(
+            base_message=None,
+            strategy="escalate",
             user_message=user_message,
             resistance_level=resistance_level,
             emotional_state=emotional_state,
             history=history,
             additional_instructions=additional_instructions
         )
+        
+        # Суммируем токены (из генерации инструкций + основного запроса)
+        return result[0], result[1] + inst_tokens
+
+    async def _generate_self_report_instructions(
+        self,
+        user_message: str,
+        resistance_level: str,
+        emotional_state: str,
+        history: List[Dict]
+    ) -> Tuple[str, int]:
+        """Генерирует динамические инструкции для самоотчета на основе истории"""
+        system_prompt = """
+        Ты психологический ассистент, помогающий сформулировать указания для самоотчета пациента.
+        Проанализируй историю диалога и последнее сообщение терапевта, чтобы предложить:
+        1. На какие аспекты сообщения стоит обратить внимание в самоанализе
+        2. Какие темы из истории стоит развить
+        3. Какие защитные механизмы могут проявиться
+        4. Какие элементы из прошлых самоотчетов можно использовать
+        
+        Предупреди, что слишком развернутый ответ не нужен.
+        Предупредить отвечать в контексте истории сообщений, и не выходить из образа. (смотреть историю сообщений - ты "assistant" - пациент, "user" - психотерапевт)
+        
+        
+        Сформулируй 3-4 конкретных указания для пациента.
+        """
+        
+        history_text = "\n".join(
+            f"{msg['role']}: {msg['content']}" for msg in history[-4:]
+        )
+        
+        user_prompt = f"""
+        Контекст:
+        - Текущее сопротивление: {resistance_level}
+        - Эмоциональное состояние: {emotional_state}
+        - Механизмы защиты: {', '.join(self.persona_data.get('personality_profile', {}).get('defense_mechanisms', {}).keys())}
+        
+        История диалога:
+        {history_text}
+        
+        Последнее сообщение терапевта:
+        "{user_message}"
+        
+        Характерные самоотчеты пациента:
+        {', '.join(self.persona_data.get('self_reports', [])) if self.persona_data.get('self_reports') else 'нет данных'}
+        
+        Сгенерируй 3-4 конкретных указания для самоотчета, например:
+        - "Обрати внимание на чувство обиды, которое могло возникнуть при упоминании детства"
+        - "Свяжи текущую реакцию с паттерном избегания близости"
+        - "Вспомни похожую ситуацию из прошлого месяца"
+        """
+        
+        response, tokens = await self._call_llm(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=0.5,
+            max_tokens=150
+        )
+        
+        return response.strip(), tokens
+
+    async def _generate_escalation_instructions(
+        self,
+        user_message: str,
+        resistance_level: str,
+        emotional_state: str,
+        history: List[Dict]
+    ) -> Tuple[str, int]:
+        """Генерирует динамические инструкции для эскалации на основе истории"""
+        system_prompt = """
+        Ты психологический ассистент, помогающий сформулировать указания для эскалационного ответа пациента.
+        Проанализируй историю диалога и определи:
+        1. Какие триггеры были затронуты
+        2. Какие защитные механизмы активированы
+        3. Какие темы вызывают наибольшее сопротивление
+        4. Как лучше выразить эскалацию (агрессия, сарказм, уход в себя и т.д.)
+        
+        Предупреди, что слишком развернутый ответ не нужен.
+        Предупредить отвечать в контексте истории сообщений, и не выходить из образа. (смотреть историю сообщений - ты "assistant" - пациент, "user" - психотерапевт)
+        
+        
+        Сформулируй 3-4 конкретных указания для эскалационного ответа.
+        """
+        
+        history_text = "\n".join(
+            f"{msg['role']}: {msg['content']}" for msg in history[-4:]
+        )
+        
+        user_prompt = f"""
+        Контекст:
+        - Текущее сопротивление: {resistance_level}
+        - Эмоциональное состояние: {emotional_state}
+        - Триггеры пациента: {', '.join(self.persona_data.get('triggers', [])) if self.persona_data.get('triggers') else 'нет данных'}
+        
+        История диалога:
+        {history_text}
+        
+        Последнее сообщение терапевта:
+        "{user_message}"
+        
+        Типичные эскалационные реакции пациента:
+        {', '.join(self.persona_data.get('escalation', [])) if self.persona_data.get('escalation') else 'нет данных'}
+        
+        Сгенерируй 3-4 конкретных указания для эскалации, например:
+        - "Используй сарказм в ответ на предположение терапевта"
+        - "Акцентируй чувство несправедливости, которое вызывает этот вопрос"
+        - "Ссылайся на предыдущий негативный опыт в похожей ситуации"
+        - "Прояви пассивно-агрессивное поведение через формальность тона"
+        """
+        
+        response, tokens = await self._call_llm(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=1.6,  # Чуть более креативные решения
+            max_tokens=500
+        )
+        
+        return response.strip(), tokens

@@ -27,17 +27,6 @@ def build_prompt(persona_data, resistance_level=None, emotional_state=None):
     strengths = format_list(profile.get("strengths_and_resources", []))
     interests = format_list(profile.get("interests_hobbies", []))
 
-    tone_data = persona_data.get("tone", {})
-    tone_text = f"""
-    - базовый стиль:  
-    { tone_data.get("baseline", "—")}
-    - защитные реакции:
-    {tone_data.get("defensive_reaction", "—")}
-    """
-
-    rules_text = format_list(persona_data.get("behaviour_rules", []))
-    self_reports_text = format_list(persona_data.get("self_reports", []))
-    escalation_text = format_list(persona_data.get("escalation", []))
     triggers = format_list(persona_data.get("triggers", []))
     forbidden = format_list(persona_data.get("forbidden_topics", []))
 
@@ -110,22 +99,6 @@ def build_prompt(persona_data, resistance_level=None, emotional_state=None):
     {interests}
 
     ---
-
-    # манера общения  
-    {tone_text}
-
-    ---
-
-    # поведенческие правила  
-    {rules_text}
-
-    # самоотчёты  
-    {self_reports_text}  
-    - вставляй иногда подобные самоотчеты, только если уместно.  
-
-    # эскалация  
-    {escalation_text}  
-    - используй подобную эскалацию не часто, но хотя бы один раз за сессию. 
 
     # триггеры  
     {triggers}
