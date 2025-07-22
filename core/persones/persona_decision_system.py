@@ -205,13 +205,13 @@ class PersonaDecisionSystem:
 
     def _get_disengage_message(self, emotional_state: str) -> str:
         """Возвращает сообщение для ухода в зависимости от состояния"""
-        if emotional_state == 'emotion_aggressive':
+        if emotional_state == 'агрессивный':
             msg = "Я слишком раздражён для этого разговора. Давайте закончим."
-        elif emotional_state == 'emotion_anxious':
+        elif emotional_state == 'тревожный и ранимый':
             msg = "Мне нужно побыть одному, я не могу продолжать..."
-        elif emotional_state == 'emotion_breakdown':
+        elif emotional_state == 'на грани срыва':
             msg = "Я не в состоянии сейчас это обсуждать. Прощайте."
-        elif emotional_state == 'emotion_shocked':
+        elif emotional_state == 'в шоке':
             msg = "Мне нужно время чтобы прийти в себя. Завершаем сеанс."
         else:
             msg = "Думаю, нам стоит закончить этот разговор."
