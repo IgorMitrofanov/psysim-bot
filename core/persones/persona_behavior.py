@@ -52,7 +52,7 @@ class PersonaBehavior:
         )
         total_tokens += decision_tokens
         
-        logger.debug(f"Decision: {decision}, processed_msg: {'None' if processed_msg is None else processed_msg[:50]}...")
+        logger.info(f"Decision: {decision}, processed_msg: {'None' if processed_msg is None else processed_msg[:50]}...")
         
         # Системный промпт добавляется единожды
         if not any(msg["role"] == "system" for msg in self.history):
@@ -69,10 +69,9 @@ class PersonaBehavior:
             logger.info(f"{self.name} decided to remain silent")
             self.history.append({"role": "assistant", "content": "*молчание, ваш персонаж предпочел не отвечать*"})
             return decision, None, total_tokens
-        
-        # if decision == 'escalate':
-        #     logger.info(f"{self.name} decided to escalate. Final message: {processed_msg[:100]}...")
-        #     return decision, processed_msg, total_tokens
+        elif decision == 'disengage':
+            logger.info(f"{self.name} decided to disengage. Final message: {processed_msg[:100]}...")
+            return decision, processed_msg, total_tokens
         
         # if decision == 'self_report':
         #     logger.info(f"{self.name} decided to self_report. Final message: {processed_msg[:100]}...")
@@ -98,7 +97,7 @@ class PersonaBehavior:
             response, response_tokens = await get_response(self.history[-6:])
             total_tokens += response_tokens
             
-            logger.debug(f"Received response from LLM. Tokens: {response_tokens}, response: {response[:100]}...")
+            logger.info(f"Received response from LLM. Tokens: {response_tokens}, response: {response[:100]}...")
             
             # 6. Обновление истории
             self.history.append({"role": "assistant", "content": response})

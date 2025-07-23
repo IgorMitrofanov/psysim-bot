@@ -14,6 +14,6 @@ def sync_get_response(messages, temperature, max_tokens):
     tokens = response.usage.total_tokens if response.usage else 0
     return reply, tokens
 
-async def get_response(messages, temperature=0.9, max_tokens=None):
+async def get_response(messages, temperature=1, max_tokens=None):
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, sync_get_response, messages, temperature, max_tokens)
