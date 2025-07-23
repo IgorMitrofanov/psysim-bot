@@ -36,36 +36,136 @@ class PersonaBehavior:
         """
         Преобразует сырой ответ от базовой LLM в стилизованный под персонажа вариант.
         """
-        style_prompt = build_prompt(
-            self.persona_data,
-            resistance_level=self.resistance_level,
-            emotional_state=self.emotional_state
-        )
+        age = self.persona_data['persona']['age']
 
-        prompt = f"""{style_prompt}
+        def format_list(items):
+            return "\n".join(f"- {item}" for item in items) if items else "—"
 
-    ---
+        background = self.persona_data.get("background", "—")
+        goal_session = self.persona_data.get("goal_session", "—")
 
-    Теперь прими следующий исходный текст как ответ твоего персонажа, суть сохраняй, но напиши его так, 
-    как сказал бы этот персонаж — с учетом его характера, стиля, эмоций и текущего состояния.
+        trauma_text = format_list(self.persona_data.get("trauma_history", []))
+        symptoms = self.persona_data.get("current_symptoms", {})
+        symptoms_text = "\n".join(f"{k}: {v}" for k, v in symptoms.items()) or "—"
 
-    Можно добавить ошибок орфографических, использовать нецензурную лексику, если биография позволяет.
+        profile = self.persona_data.get("personality_profile", {})
+        big_five = profile.get("big_five", {})
+        big_five_text = "\n".join(f"- {k.capitalize()}: {v}" for k, v in big_five.items()) or "—"
+        schemas = format_list(profile.get("predominant_schemas", []))
+        defenses = profile.get("defense_mechanisms", {})
+        defenses_text = "\n".join(f"- {k}: {v}" for k, v in defenses.items()) or "—"
+        coping = format_list(profile.get("coping_style", []))
+        interpersonal = profile.get("interpersonal_style", {})
+        interpersonal_text = "\n".join(f"- {k.capitalize()}: {v}" for k, v in interpersonal.items()) or "—"
+        values = format_list(profile.get("values", []))
+        strengths = format_list(profile.get("strengths_and_resources", []))
+        interests = format_list(profile.get("interests_hobbies", []))
 
-    Можно имитировать ошибки набора через Т9, опечатки - если сообщение эомциональное. Поступай в зависимости от контекста
+        triggers = format_list(self.persona_data.get("triggers", []))
+        forbidden = format_list(self.persona_data.get("forbidden_topics", []))
 
-    Говори через примеры из жизни, исходя из твоего реального опыта, биографии.
+        interaction = self.persona_data.get("interaction_guide", {})
+        min_chars = interaction.get("message_length", {}).get("min_chars", 50)
+        max_chars = interaction.get("message_length", {}).get("max_chars", 200)
+        use_emojis = interaction.get("use_emojis", False)
 
-    
-    # Контекст сессии ( ты "assistant" - пациент, "user" - психотерапевт
-    История последних сообщений:
-    {history}
+        resistance = self.resistance_level
+        emotion = self.emotional_state
+        prompt = f"""
+        # Ты - ассистент по созданию сообщений из текста, максимально похожих на живых людей на основе заданного образа. 
+        
+        # Твоя задача примать следующий исходный текст как ответ твоего персонажа, суть сохраняй, но напиши его так, 
+        как сказал бы этот персонаж — с учетом его характера, стиля, эмоций и текущего состояния. *Не искажай истинную суть и смысл текста!!!*
+        
+        # Длина сообщения: от {min_chars} до {max_chars} символов
+        ## Так как это переписка, можешь присать как одним текстом все (будет считаться одним сообщением), либо разделить текст на отдельные сообщения используя символы ||, для выражения эмоций или создания эмоционального накала
 
-    Исходный ответ:
-    \"\"\"{raw_response}\"\"\"
-    """
+        # Можно добавить ошибок орфографических, использовать нецензурную лексику, если биография позволяет.
 
-        # Можно использовать ту же LLM, но с другим system prompt
-        refined_response, tokens_used = await get_response([{"role": "system", "content": prompt}], temperature=1.2)
+        # Можно имитировать ошибки набора через Т9, опечатки - если сообщение эомциональное. Поступай в зависимости от контекста
+
+        # Говори через примеры из жизни, исходя из твоего реального опыта, биографии.
+        
+        ## Твой образ:
+       
+        Тебя зовут {self.name}, тебе {age} лет. Отвечай живо и эмоционально, в образе пациента, будь человечным. 
+        
+        Исходное состояние на эту сессию:
+        - Эмоциональное состояние: **{emotion}**  
+        - Уровень сопротивления: **{resistance}**  
+        
+        # биография:  
+        {background}
+
+        # травмы:  
+        {trauma_text}
+
+        # текущие симптомы:  
+        {symptoms_text}
+
+        # цели терапии  
+        {goal_session}
+
+        # психологический профиль  
+        - стиль привязанности: {profile.get('attachment_style', '—')}
+        - уровень организации личности: {profile.get('personality_organization', '—')}
+
+        ## твоя "Большая пятерка":
+        {big_five_text}
+
+        ## схемы:
+        {schemas}
+
+        ## механизмы защиты:
+        {defenses_text}
+
+        ## копинг-стратегии:
+        {coping}
+
+        ## межличностный стиль:
+        {interpersonal_text}
+
+        ## ценности:
+        {values}
+
+        ---
+
+        # сильные стороны и ресурсы  
+        {strengths}
+
+        # интересы и хобби  
+        {interests}
+
+        ---
+
+        # триггеры  
+        {triggers}
+
+        # Запретные темы  
+        {forbidden}
+        ## механизмы защиты:
+        {defenses_text}
+
+        ## копинг-стратегии:
+        {coping}
+
+        ## межличностный стиль:
+        {interpersonal_text}
+
+        ## ценности:
+        {values}
+
+        
+        # Контекст сессии
+        
+        ты "assistant" - пациент, "user" - психотерапевт
+        История последних сообщений:
+        {history}
+
+        Исходный ответ:
+        \"\"\"{raw_response}\"\"\"
+        """
+        refined_response, tokens_used = await get_response([{"role": "system", "content": prompt}], temperature=1.1)
         return refined_response, tokens_used
 
 
@@ -133,12 +233,12 @@ class PersonaBehavior:
                 self.history.append({"role": "user", "content": processed_msg})
                 logger.debug(f"Added message to history: {processed_msg[:50]}...")
             
-            # 4. Имитация задержки ответа
+            # Имитация задержки ответа
             delay = random.uniform(self.min_delay, self.max_delay)
             logger.info(f"Simulating thinking delay: {delay:.2f}s")
             await asyncio.sleep(delay)
             
-            # 5. Получение ответа от LLM
+            #  Получение ответа от LLM
             logger.debug(f"Sending to LLM. Last messages: {json.dumps(self.history, ensure_ascii=False)}")
             response, response_tokens = await get_response(self.history)
             total_tokens += response_tokens
@@ -151,13 +251,19 @@ class PersonaBehavior:
             logger.info(f"Final LLM response (with humanization): {response}")
             logger.info(f"Received response from LLM. Tokens: {response_tokens}, response: {response[:100]}...")
             
-            # 6. Обновление истории
-            self.history.append({"role": "assistant", "content": response})
-            logger.debug(f"Added assistant response to history. Total history length: {len(self.history)}")
+            # Разделение ответа на части по ||
+            if "||" in refined_response:
+                response_parts = [part.strip() for part in refined_response.split("||") if part.strip()]
+                logger.info(f"Split response into parts: {response_parts}")
+            else:
+                response_parts = [refined_response]
+            
+            # Обновление истории (сохраняем как единое сообщение)
+            self.history.append({"role": "assistant", "content": " ".join(response_parts)})
             
             
             logger.info(f"{self.name} response complete. Total tokens used: {total_tokens}")
-            return decision, response, total_tokens
+            return decision, response_parts, total_tokens
 
     async def update_state(self, resistance_level: str = None, emotional_state: str = None):
         """Обновляет состояние персонажа"""

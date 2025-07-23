@@ -347,7 +347,6 @@ class PersonaDecisionSystem:
         6. shift_topic — перевод темы
         7. open_up — углубление в терапию
 
-        ...
         Учитывай, что shift_topic — это защитная стратегия (избегание), а open_up — признак доверия и снижения сопротивления.
 
         Хронология решений: 
@@ -377,7 +376,7 @@ class PersonaDecisionSystem:
         response, _ = await self._call_llm(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            temperature=0.6  # Более детерминированные ответы, чем у персоны (8.0)
+            temperature=0.9  # Более креативные ответы, чем у персоны (0.8)
         )
         
         return response
@@ -401,13 +400,14 @@ class PersonaDecisionSystem:
         - схемами и защитами
         - историей диалога
         - принятыми ранее решениями, они будут высланы
+        - не применяй избегания, молчания, эксалации дольше 2-3 подряд, развивай персонажа. Помни, что персонаж уже пришел на сессию - значит хочет терапевтироваться.
 
         Выбери только **одно** слово из списка выше.
         """
         decision, tokens = await self._call_llm(
             system_prompt=system_prompt,
             user_prompt=prompt,
-            temperature=0.6  # Низкая температура для более предсказуемых решений
+            temperature=0.8  # Низкая температура для более предсказуемых решений
         )
         
         if decision not in ('respond', 'escalate', 'self_report', 'silence', 'disengage', 'shift_topic', 'open_up'):

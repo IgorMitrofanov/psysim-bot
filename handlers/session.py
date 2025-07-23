@@ -33,6 +33,8 @@ from texts.session_texts import (
     emo_map,
     format_map
 )
+import random
+import asyncio
 from texts.common import BACK_TO_MENU_TEXT
 from aiogram.types import Message
 from services.session_manager import SessionManager
@@ -103,7 +105,6 @@ async def session_interaction_handler(
     # тогда в персону надо будет посылать строку из склеиных сообщений
     decision, response, tokens_used = await persona.send(message.text)
     
-    response = response.replace('"', '') if response else None
 
     # Обработка решения
     match decision:
@@ -127,11 +128,19 @@ async def session_interaction_handler(
 
         case "respond" | "escalate" | "self_report" | "shift_topic" | "open_up":
             if response:
-                await message.answer(response)
+                if isinstance(response, list):
+                    for part in response:
+                        clean_part = part.replace('"', '')
+                        await message.answer(clean_part)
+                        delay = min(3, max(0.5, len(clean_part) / 100 * random.uniform(1.5, 5.5)))
+                        await asyncio.sleep(delay)
+                else:
+                    await message.answer(response.replace('"', ''))
+                
                 await session_manager.add_message_to_history(
-                    db_user.id, response, is_user=False, tokens_used=tokens_used
+                    db_user.id, " ".join(response) if isinstance(response, list) else response, 
+                    is_user=False, tokens_used=tokens_used
                 )
-                # TODO: После ответа персонажа надо включать таймер который будет регировать на молчание пользователя
             else:
                 await message.answer("<code>Персонаж не смог ответить на сообщение.</code>")
         
