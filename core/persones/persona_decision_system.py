@@ -21,6 +21,8 @@ emo_map = {
     "emotion_depressed": "подавленный"
 }
 
+('respond', 'escalate', 'self_report', 'silence', 'disengage', 'shift_topic', 'open_up')
+
 class PersonaDecisionSystem:
     def __init__(self, persona_data: Dict):
         self.persona_data = persona_data
@@ -80,6 +82,22 @@ class PersonaDecisionSystem:
             )
             tokens += salt_tokens
             logger.info(f"Escalating with message: {salted_msg}")
+            return decision, salted_msg, tokens
+        
+        elif decision == 'shift_topic':
+            salted_msg, salt_tokens = await self._salt_message_with_llm(
+                user_message, 'shift_topic', resistance_level, emotional_state, history
+            )
+            tokens += salt_tokens
+            logger.info(f"Shifting topic with message: {salted_msg}")
+            return decision, salted_msg, tokens
+
+        elif decision == 'open_up':
+            salted_msg, salt_tokens = await self._salt_message_with_llm(
+                user_message, 'open_up', resistance_level, emotional_state, history
+            )
+            tokens += salt_tokens
+            logger.info(f"Opening up with message: {salted_msg}")
             return decision, salted_msg, tokens
         
         elif decision == 'self_report':
@@ -214,7 +232,7 @@ class PersonaDecisionSystem:
         if len(self.recent_decisions) > 5:
             self.recent_decisions.pop(0)
         
-        if llm_decision in ('respond', 'escalate', 'self_report', 'silence', 'disengage'):
+        if llm_decision in ('respond', 'escalate', 'self_report', 'silence', 'disengage', 'shift_topic', 'open_up'):
             self.decision_cache[cache_key] = llm_decision
             logger.info(f"LLM decision: {llm_decision} for {state_desc}")
             return llm_decision, tokens_used
@@ -298,7 +316,8 @@ class PersonaDecisionSystem:
         
         tone_data = self.persona_data.get("tone", {})
         defenses = profile.get("defense_mechanisms", {})
-        
+        last_decisions = "\n".join(f"{i+1}. {d}" for i, d in enumerate(self.recent_decisions)) if hasattr(self, 'recent_decisions') else "нет данных"
+
         user_prompt = f"""
         Контекст:
         - Стратегия ответа: {strategy}
@@ -310,14 +329,20 @@ class PersonaDecisionSystem:
         - Базовый: {tone_data.get("baseline", "—")}
         - При защите: {tone_data.get("defensive_reaction", "—")}
         
-        Доступные стратегии:
-        1. respond (стандартный ответ) 
-        2. escalate (эмоциональная реакция) 
-        3. self_report (самоанализ) 
-        4. silence (пауза) 
-        5. disengage (завершение)
+        1. respond — стандартный ответ
+        2. escalate — эмоциональная реакция
+        3. self_report — самоанализ
+        4. silence — пауза
+        5. disengage — завершение
+        6. shift_topic — перевод темы
+        7. open_up — углубление в терапию
 
-        
+        ...
+        Учитывай, что shift_topic — это защитная стратегия (избегание), а open_up — признак доверия и снижения сопротивления.
+
+        Хронология решений: 
+        {last_decisions}
+
         
         Про персонажа:
         - Поведенческие правила: {', '.join(self.persona_data.get('behaviour_rules', [])) if self.persona_data.get('behaviour_rules') else 'нет'}
@@ -351,22 +376,31 @@ class PersonaDecisionSystem:
         """Получает решение от мета нейросети, принимающей решения"""
         system_prompt = """
         Ты принимаешь решения для пациента на психотерапии. Выбери ОДНУ стратегию реакции:
-        1. respond (стандартный ответ) - если диалог идет нормально, 70% случаев если нет триггеров, агрессии. но сильно зависит от текущей эмоции и контекста
-        2. escalate (эмоциональная реакция) - если затронуты триггеры или сопротивление растет. 5% случаев, но сильно заависит от текущей эмоции и контекста
-        3. self_report (самоанализ) - если терапевт запрашивает рефлексию или есть возможность раскрыться. 10% случаев, но сильно заависит от текущей эмоции и контекста
-        4. silence (пауза) - проверка реакции терапевта, или при эмоциях, избегай без веской причины. 5% случаев, но сильно заависит от текущей эмоции и контекста
-        5. disengage (завершение) - 5%, но сильно заависит от текущей эмоции и контекста. если сессия исчерпана или эмоционально перегружен, собеседник агрессивен, груб, незаинтересован - 100%
-        
-        Верни только одно слово (без пояснений) из списка выше. Тебе будет так же отправлена хронология принятых тобой решений. Следи за хронологией и логично и по-человечески развивай решения.
+
+        1. respond — стандартный осмысленный ответ (базовый путь). 70% случаев если нет триггеров, агрессии. но сильно зависит от текущей эмоции и контекста
+        2. escalate — эмоциональный, обострённый или агрессивный ответ. 5% случаев, но сильно заависит от текущей эмоции и контекста
+        3. self_report — самоанализ, откровенность, честное признание. 5% случаев, но сильно заависит от текущей эмоции и контекста
+        4. silence — молчание (пауза или уход в себя). 5% случаев, но сильно заависит от текущей эмоции и контекста
+        5. disengage — завершение общения. 5%, но сильно заависит от текущей эмоции и контекста. если сессия исчерпана или эмоционально перегружен, собеседник агрессивен, груб, незаинтересован - 100%
+        6. shift_topic — уход от темы, перевод разговора (например, в случае избегания, стыда, страха), сильно заависит от текущей эмоции и контекста.
+        7. open_up — готовность углубиться, признаться, довериться, начать рефлексию (даже если страшно), сильно заависит от текущей эмоции и контекста.
+
+        Руководствуйся:
+        - текущим эмоциональным состоянием
+        - уровнем сопротивления
+        - схемами и защитами
+        - историей диалога
+        - принятыми ранее решениями, они будут высланы
+
+        Выбери только **одно** слово из списка выше.
         """
-        
         decision, tokens = await self._call_llm(
             system_prompt=system_prompt,
             user_prompt=prompt,
-            temperature=0.4  # Низкая температура для более предсказуемых решений
+            temperature=0.6  # Низкая температура для более предсказуемых решений
         )
         
-        if decision not in ('respond', 'escalate', 'self_report', 'silence', 'disengage'):
+        if decision not in ('respond', 'escalate', 'self_report', 'silence', 'disengage', 'shift_topic', 'open_up'):
             logger.warning(f"Invalid LLM decision: {decision}")
             return "respond", tokens
             
@@ -418,6 +452,15 @@ class PersonaDecisionSystem:
         ## ВАЖНО, твои последние принятые решения персонажа:
         {last_decisions}
         
+        # Доступные стратегии:
+        1. respond — стандартный ответ
+        2. escalate — эмоциональная реакция
+        3. self_report — самоанализ
+        4. silence — пауза
+        5. disengage — завершение
+        6. shift_topic — перевод темы
+        7. open_up — углубление в терапию
+        
         # Контекст сессии ( ты "assistant" - пациент, "user" - психотерапевт
         История последних сообщений:
         {history_text}
@@ -428,14 +471,8 @@ class PersonaDecisionSystem:
         
         # Анализ и решение
         Учитывая психологический профиль, текущее состояние и историю взаимодействия, как следует реагировать?
+
         
-        #
-        Доступные стратегии:
-        1. respond (стандартный ответ) 
-        2. escalate (эмоциональная реакция)
-        3. self_report (самоанализ)
-        4. silence (пауза)
-        5. disengage (завершение)
         
         Выбери ОДНУ стратегию, наиболее соответствующую:
         - текущему эмоциональному состоянию ({emotion})

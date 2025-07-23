@@ -125,7 +125,7 @@ async def session_interaction_handler(
                 await state.clear()
                 await state.set_state(MainMenu.choosing)
 
-        case "respond" | "escalate" | "self_report":
+        case "respond" | "escalate" | "self_report" | "shift_topic" | "open_up":
             if response:
                 await message.answer(response)
                 await session_manager.add_message_to_history(
