@@ -9,6 +9,7 @@ from core.persones.persona_decision_system import PersonaDecisionSystem
 import json
 from config import logger
 
+
 class PersonaBehavior:
     def __init__(self, persona_data, resistance_level=None, emotional_state=None, format=None):
         self.persona_data = persona_data
@@ -26,10 +27,47 @@ class PersonaBehavior:
         guide = persona_data.get("interaction_guide", {})
         self.min_delay = guide.get("reply_delay_sec", {}).get("min", 0)
         self.max_delay = guide.get("reply_delay_sec", {}).get("max", 2)
-        # self.memory_update_interval = timedelta(minutes=5)  # Интервал обновления мета-памяти
+
         
         logger.info(f"Initialized PersonaBehavior for {self.name} with resistance: {self.resistance_level}, "
                    f"emotion: {self.emotional_state}, delay: {self.min_delay}-{self.max_delay}s")
+        
+    async def refine_response_with_style(self, raw_response: str, history: list[str]) -> Tuple[str, int]:
+        """
+        Преобразует сырой ответ от базовой LLM в стилизованный под персонажа вариант.
+        """
+        style_prompt = build_prompt(
+            self.persona_data,
+            resistance_level=self.resistance_level,
+            emotional_state=self.emotional_state
+        )
+
+        prompt = f"""{style_prompt}
+
+    ---
+
+    Теперь прими следующий исходный текст как ответ твоего персонажа, суть сохраняй, но напиши его так, 
+    как сказал бы этот персонаж — с учетом его характера, стиля, эмоций и текущего состояния.
+
+    Можно добавить ошибок орфографических, использовать нецензурную лексику, если биография позволяет.
+
+    Можно имитировать ошибки набора через Т9, опечатки - если сообщение эомциональное. Поступай в зависимости от контекста
+
+    Говори через примеры из жизни, исходя из твоего реального опыта, биографии.
+
+    
+    # Контекст сессии ( ты "assistant" - пациент, "user" - психотерапевт
+    История последних сообщений:
+    {history}
+
+    Исходный ответ:
+    \"\"\"{raw_response}\"\"\"
+    """
+
+        # Можно использовать ту же LLM, но с другим system prompt
+        refined_response, tokens_used = await get_response([{"role": "system", "content": prompt}], temperature=1.1)
+        return refined_response, tokens_used
+
 
     async def send(self, user_message: str) -> Tuple[str, Optional[str], int]:
         """
@@ -39,6 +77,16 @@ class PersonaBehavior:
         - Tuple[решение, ответ, количество токенов]
         - Если ответ None - персонаж молчит
         - Если решение 'disengage' - персонаж завершает сеанс
+
+
+        # Доступные стратегии:
+        1. respond — стандартный ответ
+        2. escalate — эмоциональная реакция
+        3. self_report — самоанализ
+        4. silence — пауза
+        5. disengage — завершение
+        6. shift_topic — перевод темы
+        7. open_up — углубление в терапию
         """
         total_tokens = 0
         logger.debug(f"Received message from user: {user_message[:100]}...")
@@ -71,15 +119,13 @@ class PersonaBehavior:
             return decision, None, total_tokens
         elif decision == 'disengage':
             logger.info(f"{self.name} decided to disengage. Final message: {processed_msg[:100]}...")
-            return decision, processed_msg, total_tokens
-        
-        # if decision == 'self_report':
-        #     logger.info(f"{self.name} decided to self_report. Final message: {processed_msg[:100]}...")
-        #     return decision, processed_msg, total_tokens
-        
-        # if decision == 'response':
-        #     self.history.append({"role": "user", "content": processed_msg})
-        #     logger.debug(f"Added processed message to history: {processed_msg[:50]}...")
+            # Очеловечивание — вторичная генерация с сохранением смысла
+            refined_response, refined_tokens = await self.refine_response_with_style(processed_msg, self.history)
+            total_tokens += refined_tokens
+
+            response = refined_response 
+            logger.info(f"Final LLM response (with humanization): {response}")
+            return decision, refined_response, total_tokens
             
         else:
         # Добавляем обработанное сообщение в историю
@@ -93,10 +139,16 @@ class PersonaBehavior:
             await asyncio.sleep(delay)
             
             # 5. Получение ответа от LLM
-            logger.debug(f"Sending to LLM. Last messages: {json.dumps(self.history[-6:], ensure_ascii=False)}")
-            response, response_tokens = await get_response(self.history[-6:])
+            logger.debug(f"Sending to LLM. Last messages: {json.dumps(self.history, ensure_ascii=False)}")
+            response, response_tokens = await get_response(self.history)
             total_tokens += response_tokens
-            
+            logger.info(f"Final LLM response: {response}")
+            # Очеловечивание — вторичная генерация с сохранением смысла
+            refined_response, refined_tokens = await self.refine_response_with_style(response, self.history)
+            total_tokens += refined_tokens
+
+            response = refined_response 
+            logger.info(f"Final LLM response (with humanization): {response}")
             logger.info(f"Received response from LLM. Tokens: {response_tokens}, response: {response[:100]}...")
             
             # 6. Обновление истории

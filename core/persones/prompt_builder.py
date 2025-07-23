@@ -108,3 +108,4 @@ def build_prompt(persona_data, resistance_level=None, emotional_state=None):
     """
     logger.debug(prompt)
     return prompt
+
