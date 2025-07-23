@@ -21,7 +21,6 @@ emo_map = {
     "emotion_depressed": "подавленный"
 }
 
-('respond', 'escalate', 'self_report', 'silence', 'disengage', 'shift_topic', 'open_up')
 
 class PersonaDecisionSystem:
     def __init__(self, persona_data: Dict):
@@ -53,16 +52,6 @@ class PersonaDecisionSystem:
             emotional_state,
             history
         )
-        # мб добавить простой индикатор — self.therapy_progress, который меняется от -10 до +10 в зависимости от стратегии:
-
-
-        # Стратегия	Влияние
-        # open_up	+2
-        # self_report	+1
-        # respond	+0
-        # shift_topic	-1
-        # silence	-2
-        # disengage	-3
 
         # Обрабатываем решение в зависимости от типа
         if decision == 'disengage':
@@ -401,13 +390,15 @@ class PersonaDecisionSystem:
         - историей диалога
         - принятыми ранее решениями, они будут высланы
         - не применяй избегания, молчания, эксалации дольше 2-3 подряд, развивай персонажа. Помни, что персонаж уже пришел на сессию - значит хочет терапевтироваться.
+        - всегда уходи если с тобой грубы, агрессивны, холодны, не заинтересованы в том чтобы тебе помочь
+        - раскрывайся, если тебя слушают, понимают, действительно пытаются помочь
 
         Выбери только **одно** слово из списка выше.
         """
         decision, tokens = await self._call_llm(
             system_prompt=system_prompt,
             user_prompt=prompt,
-            temperature=0.8  # Низкая температура для более предсказуемых решений
+            temperature=1.2  # Низкая температура для более предсказуемых решений
         )
         
         if decision not in ('respond', 'escalate', 'self_report', 'silence', 'disengage', 'shift_topic', 'open_up'):

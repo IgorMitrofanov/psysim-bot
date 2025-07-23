@@ -35,138 +35,61 @@ class PersonaBehavior:
     async def refine_response_with_style(self, raw_response: str, history: list[str]) -> Tuple[str, int]:
         """
         Преобразует сырой ответ от базовой LLM в стилизованный под персонажа вариант.
+        Возвращает обработанный ответ и количество использованных токенов.
         """
-        age = self.persona_data['persona']['age']
+        persona = self.persona_data['persona']
+        profile = self.persona_data.get("personality_profile", {})
+        interaction = self.persona_data.get("interaction_guide", {})
 
+        # Форматирование списков
         def format_list(items):
             return "\n".join(f"- {item}" for item in items) if items else "—"
 
-        background = self.persona_data.get("background", "—")
-        goal_session = self.persona_data.get("goal_session", "—")
-
-        trauma_text = format_list(self.persona_data.get("trauma_history", []))
-        symptoms = self.persona_data.get("current_symptoms", {})
-        symptoms_text = "\n".join(f"{k}: {v}" for k, v in symptoms.items()) or "—"
-
-        profile = self.persona_data.get("personality_profile", {})
-        big_five = profile.get("big_five", {})
-        big_five_text = "\n".join(f"- {k.capitalize()}: {v}" for k, v in big_five.items()) or "—"
-        schemas = format_list(profile.get("predominant_schemas", []))
-        defenses = profile.get("defense_mechanisms", {})
-        defenses_text = "\n".join(f"- {k}: {v}" for k, v in defenses.items()) or "—"
-        coping = format_list(profile.get("coping_style", []))
-        interpersonal = profile.get("interpersonal_style", {})
-        interpersonal_text = "\n".join(f"- {k.capitalize()}: {v}" for k, v in interpersonal.items()) or "—"
-        values = format_list(profile.get("values", []))
-        strengths = format_list(profile.get("strengths_and_resources", []))
-        interests = format_list(profile.get("interests_hobbies", []))
-
-        triggers = format_list(self.persona_data.get("triggers", []))
-        forbidden = format_list(self.persona_data.get("forbidden_topics", []))
-
-        interaction = self.persona_data.get("interaction_guide", {})
+        # Основные параметры
         min_chars = interaction.get("message_length", {}).get("min_chars", 50)
         max_chars = interaction.get("message_length", {}).get("max_chars", 200)
         use_emojis = interaction.get("use_emojis", False)
 
-        resistance = self.resistance_level
-        emotion = self.emotional_state
         prompt = f"""
-        # Ты - ассистент по созданию сообщений из текста, максимально похожих на живых людей на основе заданного образа. 
+        # ЗАДАНИЕ:
+        Перепиши следующий текст так, как его сказал бы реальный человек {persona['name']} ({persona['age']} лет).
+        Сохрани суть, но адаптируй стиль под персонажа.
+        Если текст кажется тебе адекватным в рамках персонажа, не меняй его но форматируй по заданному формату.
         
-        # Твоя задача примать следующий исходный текст как ответ твоего персонажа, суть сохраняй, но напиши его так, 
-        как сказал бы этот персонаж — с учетом его характера, стиля, эмоций и текущего состояния. *Не искажай истинную суть и смысл текста!!!*
+        # ФОРМАТ ОТВЕТА:
+        - Можно писать как одним сообщением, так и разделять на части символом || для создания эмоционального эффекта
+        - Длина каждого куска: {min_chars}-{max_chars} символов
+        - Число кусков зависит от контекста. Не делай их всегда много.
         
-        # Длина сообщения: от {min_chars} до {max_chars} символов
-        ## Так как это переписка, можешь присать как одним текстом все (будет считаться одним сообщением), либо разделить текст на отдельные сообщения используя символы ||, для выражения эмоций или создания эмоционального накала
-
-        # Можно добавить ошибок орфографических, использовать нецензурную лексику, если биография позволяет.
-
-        # Можно имитировать ошибки набора через Т9, опечатки - если сообщение эомциональное. Поступай в зависимости от контекста
-
-        # Говори через примеры из жизни, исходя из твоего реального опыта, биографии.
+        # ПАРАМЕТРЫ ПЕРСОНАЖА:
+        - Эмоции: {self.emotional_state}
+        - Сопротивление: {self.resistance_level}
+        - Характер: {profile.get('big_five', {}).get('neuroticism', '—')} нейротизм
+        - Речь: {profile.get('interpersonal_style', {}).get('communication_style', '—')}
+        {"- Можно использовать эмодзи" if use_emojis else ""}
+        {"- Допустимы опечатки и разговорные формы" if self.emotional_state != "emotion_neutral" else ""}
         
-        ## Твой образ:
-       
-        Тебя зовут {self.name}, тебе {age} лет. Отвечай живо и эмоционально, в образе пациента, будь человечным. 
+        # КОНТЕКСТ ДИАЛОГА:
+        {history if history else "Нет истории диалога"}
         
-        Исходное состояние на эту сессию:
-        - Эмоциональное состояние: **{emotion}**  
-        - Уровень сопротивления: **{resistance}**  
-        
-        # биография:  
-        {background}
-
-        # травмы:  
-        {trauma_text}
-
-        # текущие симптомы:  
-        {symptoms_text}
-
-        # цели терапии  
-        {goal_session}
-
-        # психологический профиль  
-        - стиль привязанности: {profile.get('attachment_style', '—')}
-        - уровень организации личности: {profile.get('personality_organization', '—')}
-
-        ## твоя "Большая пятерка":
-        {big_five_text}
-
-        ## схемы:
-        {schemas}
-
-        ## механизмы защиты:
-        {defenses_text}
-
-        ## копинг-стратегии:
-        {coping}
-
-        ## межличностный стиль:
-        {interpersonal_text}
-
-        ## ценности:
-        {values}
-
-        ---
-
-        # сильные стороны и ресурсы  
-        {strengths}
-
-        # интересы и хобби  
-        {interests}
-
-        ---
-
-        # триггеры  
-        {triggers}
-
-        # Запретные темы  
-        {forbidden}
-        ## механизмы защиты:
-        {defenses_text}
-
-        ## копинг-стратегии:
-        {coping}
-
-        ## межличностный стиль:
-        {interpersonal_text}
-
-        ## ценности:
-        {values}
-
-        
-        # Контекст сессии
-        
-        ты "assistant" - пациент, "user" - психотерапевт
-        История последних сообщений:
-        {history}
-
-        Исходный ответ:
+        # ИСХОДНЫЙ ТЕКСТ ДЛЯ ПЕРЕФРАЗИРОВКИ:
         \"\"\"{raw_response}\"\"\"
+        
+        # ПЕРЕРАБОТАННЫЙ ОТВЕТ (с учетом всех указаний выше):
         """
-        refined_response, tokens_used = await get_response([{"role": "system", "content": prompt}], temperature=1.1)
-        return refined_response, tokens_used
+        
+        messages = [{
+            "role": "system",
+            "content": "Ты эксперт по адаптации текста под стиль речи. Сохраняй смысл, меняй форму. Можно разделять ответ через || для эффекта живой речи. Не делай много разделей слишком часто, чтобы разговор казался живым. Следи за историей сообщений, твои сообщения - assistant, терапевта - <Сообщение терапевта>"
+        }, {
+            "role": "user",
+            "content": prompt
+        }]
+        
+        refined_response, tokens_used = await get_response(messages, temperature=0.9)
+        refined_response = refined_response.replace("`", "")
+        refined_response = refined_response.replace("-", "")
+        return refined_response.strip(), tokens_used
 
 
     async def send(self, user_message: str) -> Tuple[str, Optional[str], int]:
@@ -217,15 +140,6 @@ class PersonaBehavior:
             logger.info(f"{self.name} decided to remain silent")
             self.history.append({"role": "assistant", "content": "*молчание, ваш персонаж предпочел не отвечать*"})
             return decision, None, total_tokens
-        elif decision == 'disengage':
-            logger.info(f"{self.name} decided to disengage. Final message: {processed_msg[:100]}...")
-            # Очеловечивание — вторичная генерация с сохранением смысла
-            refined_response, refined_tokens = await self.refine_response_with_style(processed_msg, self.history)
-            total_tokens += refined_tokens
-
-            response = refined_response 
-            logger.info(f"Final LLM response (with humanization): {response}")
-            return decision, refined_response, total_tokens
             
         else:
         # Добавляем обработанное сообщение в историю

@@ -116,7 +116,15 @@ async def session_interaction_handler(
 
         case "disengage":
             if response:
-                await message.answer(response)
+                
+                if isinstance(response, list):
+                    for part in response:
+                        clean_part = part.replace('"', '')
+                        await message.answer(clean_part)
+                        delay = min(3, max(0.5, len(clean_part) / 100 * random.uniform(1.5, 5.5)))
+                        await asyncio.sleep(delay)
+                else:
+                    await message.answer(response.replace('"', ''))
                 await session_manager.add_message_to_history(
                     db_user.id, response, is_user=False, tokens_used=tokens_used
                 )
