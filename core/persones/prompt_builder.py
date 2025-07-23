@@ -1,6 +1,6 @@
 from config import logger
 
-def build_prompt(persona_data, resistance_level=None, emotional_state=None):
+def build_prompt(persona_data, resistance_level=None, emotional_state=None) -> str:
     name = persona_data['persona']['name']
     age = persona_data['persona']['age']
 
@@ -115,3 +115,47 @@ def build_prompt(persona_data, resistance_level=None, emotional_state=None):
     logger.debug(prompt)
     return prompt
 
+def build_humalizate_prompt(persona_data, raw_response: str, history: list[str], resistance_level=None, emotional_state=None):
+    persona = persona_data['persona']
+    profile = persona_data.get("personality_profile", {})
+    interaction = persona_data.get("interaction_guide", {})
+
+    # Форматирование списков
+    def format_list(items):
+        return "\n".join(f"- {item}" for item in items) if items else "—"
+
+    # Основные параметры
+    min_chars = interaction.get("message_length", {}).get("min_chars", 50)
+    max_chars = interaction.get("message_length", {}).get("max_chars", 200)
+    use_emojis = interaction.get("use_emojis", False)
+
+    prompt = f"""
+    # ЗАДАНИЕ:
+    Перепиши следующий текст так, как его сказал бы реальный человек {persona['name']} ({persona['age']} лет).
+    Сохрани суть, но адаптируй стиль под персонажа.
+    Если текст кажется тебе адекватным в рамках персонажа, не меняй его но форматируй по заданному формату.
+    Не используй слишком много метафор.
+    
+    # ФОРМАТ ОТВЕТА:
+    - Можно писать как одним сообщением, так и разделять на части символом || для создания эмоционального эффекта
+    - Длина каждого куска: {min_chars}-{max_chars} символов
+    - Число кусков зависит от контекста. Не делай их всегда много.
+    
+    # ПАРАМЕТРЫ ПЕРСОНАЖА:
+    - Эмоции: {emotional_state}
+    - Сопротивление: {resistance_level}
+    - Характер: {profile.get('big_five', {}).get('neuroticism', '—')} нейротизм
+    - Речь: {profile.get('interpersonal_style', {}).get('communication_style', '—')}
+    {"- Можно использовать эмодзи" if use_emojis else ""}
+    {"- Допустимы опечатки и разговорные формы" if emotional_state != "emotion_neutral" else ""}
+    
+    # КОНТЕКСТ ДИАЛОГА:
+    {history if history else "Нет истории диалога"}
+    
+    # ИСХОДНЫЙ ТЕКСТ ДЛЯ ПЕРЕФРАЗИРОВКИ:
+    \"\"\"{raw_response}\"\"\"
+    
+    # ПЕРЕРАБОТАННЫЙ ОТВЕТ (с учетом всех указаний выше):
+    """
+    system_msg = "Ты эксперт по адаптации текста под стиль речи. Сохраняй смысл, меняй форму. Можно разделять ответ через || для эффекта живой речи. Не делай много разделей слишком часто, чтобы разговор казался живым. Следи за историей сообщений, твои сообщения - assistant, терапевта - <Сообщение терапевта>"
+    return prompt, system_msg

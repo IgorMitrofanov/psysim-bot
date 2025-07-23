@@ -27,7 +27,7 @@ class PersonaDecisionSystem:
         self.persona_data = persona_data
         self.decision_cache = {}
         
-        logger.info(f"Initialized PersonaDecisionSystem for {persona_data['persona']['name']}")
+        logger.info(f"[AI-decision system] Initialized for {persona_data['persona']['name']}")
     
     async def process_user_message(
         self,
@@ -43,7 +43,7 @@ class PersonaDecisionSystem:
         - количество использованных токенов
         """
         state_desc = self._get_human_readable_state(resistance_level, emotional_state)
-        logger.info(f"Processing message: {user_message[:100]}..., {state_desc}")
+        logger.info(f"[AI-decision system] Processing message: {user_message[:200]}..., {state_desc}")
         
         # Принимаем мета-решение
         decision, tokens = await self.make_decision(
@@ -64,11 +64,11 @@ class PersonaDecisionSystem:
                 history
             )
             tokens += salt_tokens
-            logger.info(f"Disengaging with message: {salted_msg}")
+            logger.info(f"[AI-decision system] Disengaging with message: {salted_msg}, tokens spent: {tokens}")
             return decision, salted_msg, tokens
         
         elif decision == 'silence':
-            logger.info("Choosing to remain silent")
+            logger.info(f"[AI-decision system] Choosing to remain silent, tokens spent: {tokens}")
             return decision, None, tokens
         
         elif decision == 'escalate':
@@ -80,7 +80,7 @@ class PersonaDecisionSystem:
                 history
             )
             tokens += salt_tokens
-            logger.info(f"Escalating with message: {salted_msg}")
+            logger.info(f"[AI-decision system] Escalating with message: {salted_msg},  tokens spent: {tokens}")
             return decision, salted_msg, tokens
         
         elif decision == 'shift_topic':
@@ -88,7 +88,7 @@ class PersonaDecisionSystem:
                 user_message, 'shift_topic', resistance_level, emotional_state, history
             )
             tokens += salt_tokens
-            logger.info(f"Shifting topic with message: {salted_msg}")
+            logger.info(f"[AI-decision system] Shifting topic with message: {salted_msg},  tokens spent: {tokens}")
             return decision, salted_msg, tokens
 
         elif decision == 'open_up':
@@ -96,7 +96,7 @@ class PersonaDecisionSystem:
                 user_message, 'open_up', resistance_level, emotional_state, history
             )
             tokens += salt_tokens
-            logger.info(f"Opening up with message: {salted_msg}")
+            logger.info(f"[AI-decision system] Opening up with message: {salted_msg},  tokens spent: {tokens}")
             return decision, salted_msg, tokens
         
         elif decision == 'self_report':
@@ -108,7 +108,7 @@ class PersonaDecisionSystem:
                 history
             )
             tokens += salt_tokens
-            logger.info(f"Self-reporting with message: {salted_msg}")
+            logger.info(f"[AI-decision system] Self-reporting with message: {salted_msg},  tokens spent: {tokens}")
             return decision, salted_msg, tokens
         
         elif decision == 'respond':
@@ -120,7 +120,7 @@ class PersonaDecisionSystem:
                 history
             )
             tokens += salt_tokens
-            logger.info(f"Responding with message: {salted_msg}")
+            logger.info(f"[AI-decision system] Responding with message: {salted_msg}, tokens spent: {tokens}")
             return decision, salted_msg, tokens
     
     def _get_disengage_message(self, emotional_state: str) -> str:
@@ -135,8 +135,6 @@ class PersonaDecisionSystem:
             msg = "Мне нужно время чтобы прийти в себя. Завершаем сеанс."
         else:
             msg = "Думаю, нам стоит закончить этот разговор."
-        
-        logger.debug(f"Disengage message for {emotional_state}: {msg}")
         return msg
     
     async def _salt_disengage_message(
@@ -158,12 +156,16 @@ class PersonaDecisionSystem:
             )
             
             prompt = f"""
-            Базовое сообщение для завершения:
-            "{base_message}"
 
             Обязательно учитывай, что ответил терапевт {user_message}.
+            
+            И историю чата:
+            
+            {history}
 
             Если это агрессия - ответь агрессией, можешь сорваться. Действуй в зависимости от эмоционального состояния.
+            
+            Никогда не выходи из образа пациента
             
             Инструкция для персонализированного завершения:
             *{salt_phrase}*
@@ -188,10 +190,9 @@ class PersonaDecisionSystem:
             final_msg, llm_tokens = await self._call_llm(
                 system_prompt=system_prompt,
                 user_prompt=prompt,
-                temperature=0.7,
+                temperature=0.9,
                 max_tokens=100
             )
-            logger.info(f"_salt_disengage_message: {final_msg}")
             # Если что-то пошло не так, возвращаем хотя бы базовое сообщение
             if not final_msg.strip():
                 return base_message, llm_tokens
@@ -199,7 +200,7 @@ class PersonaDecisionSystem:
             return final_msg, llm_tokens + (len(prompt) // 4)
             
         except Exception as e:
-            logger.error(f"Error salting disengage message: {str(e)}", exc_info=True)
+            logger.error(f"[AI-decision system] Error salting disengage message: {str(e)}", exc_info=True)
             return base_message, 0
 
     async def make_decision(
@@ -211,7 +212,6 @@ class PersonaDecisionSystem:
     ) -> Tuple[str, int]:
         """Принимает решение о реакции персонажа"""
         state_desc = self._get_human_readable_state(resistance_level, emotional_state)
-        logger.debug(f"Making decision for context: {context[:50]}..., {state_desc}")
         
         cache_key = self._create_cache_key(context, resistance_level, emotional_state)
         if cache_key in self.decision_cache:
@@ -219,10 +219,10 @@ class PersonaDecisionSystem:
             return self.decision_cache[cache_key], 0
         
         tokens_used = 0
-        
 
         prompt = self._build_meta_prompt(context, resistance_level, emotional_state, history)
         llm_decision, llm_tokens = await self._get_llm_decision(prompt)
+        logger.info(f"[AI-decision system] LLM desicion: {llm_decision}, tokens spent {llm_tokens}")
         tokens_used += llm_tokens
 
         if not hasattr(self, 'recent_decisions'):
@@ -236,7 +236,7 @@ class PersonaDecisionSystem:
             logger.info(f"LLM decision: {llm_decision} for {state_desc}")
             return llm_decision, tokens_used
         else:
-            logger.warning(f"Invalid LLM decision: {llm_decision}. Falling back to default 'respond'")
+            logger.warning(f"[AI-decision system] Invalid LLM decision: {llm_decision}. Falling back to default 'respond'")
         
         # Фолбэк решение, если LLM не используется или вернул недопустимое значение
         decision = 'respond'
@@ -278,11 +278,11 @@ class PersonaDecisionSystem:
                 max_tokens=max_tokens
             )
             
-            logger.debug(f"LLM response: {response[:200]}... (tokens: {tokens})")
+            logger.debug(f"[AI-decision system] LLM response: {response[:200]}... (tokens: {tokens})")
             return response.strip(), tokens
             
         except Exception as e:
-            logger.error(f"LLM call error: {str(e)}", exc_info=True)
+            logger.error(f"[AI-decision system] LLM call error: {str(e)}", exc_info=True)
             return "", 0
 
     async def _generate_salt_phrase(
@@ -402,7 +402,7 @@ class PersonaDecisionSystem:
         )
         
         if decision not in ('respond', 'escalate', 'self_report', 'silence', 'disengage', 'shift_topic', 'open_up'):
-            logger.warning(f"Invalid LLM decision: {decision}")
+            logger.warning(f"[AI-decision system] Invalid LLM decision: {decision}")
             return "respond", tokens
             
         return decision, tokens
@@ -483,17 +483,11 @@ class PersonaDecisionSystem:
         - истории взаимодействия
         """
         
-        logger.debug(f"Built enhanced meta prompt:\n{prompt}...")
+        logger.debug(f"[AI-decision system] Built enhanced meta prompt:\n{prompt}...")
         return prompt
     
     # поведенческая инерция — снижать вероятность повторения одной и той же стратегии несколько раз подряд:
     # нужно более сложно сделать на основе реакций
-
-    # def _penalize_repetitions(self, decision: str) -> str:
-    #     if self.recent_decisions.count(decision) > 2:
-    #         alternatives = [d for d in all_strategies if d != decision]
-    #         return random.choice(alternatives)
-    #     return decision
         
     async def _salt_message_with_llm(
         self,
@@ -531,9 +525,9 @@ class PersonaDecisionSystem:
             """
             
             tokens = len(prompt) // 4 
-            logger.info(f"Salted message (dynamic basic): {prompt[:100]}...")
+            logger.info(f"[AI-decision system] Salted message (dynamic basic): {prompt[:100]}...")
             return prompt, tokens
             
         except Exception as e:
-            logger.error(f"Error in _salt_user_message: {str(e)}", exc_info=True)
+            logger.error(f"[AI-decision system] Error in _salt_user_message: {str(e)}", exc_info=True)
             return user_message, 0

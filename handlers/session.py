@@ -100,11 +100,16 @@ async def session_interaction_handler(
         is_user=True,
         tokens_used=len(message.text) // 4
     )
+    
+    async def typing_callback():
+        while True:
+            await message.bot.send_chat_action(message.chat.id, 'typing')
+            await asyncio.sleep(3)
 
     # Получаем решение и ответ от персонажа TODO: Хотелось бы здесь после каждого сообщения юзера ждать секунд 10, при этом каждое сообщение класть в буфер. и чтобы мы работали с буфером сообщений как с одним - бывает пишут несколькими сообщениями - так живость модели повысится
     # тогда в персону надо будет посылать строку из склеиных сообщений
+    persona.set_typing_callback(typing_callback)
     decision, response, tokens_used = await persona.send(message.text)
-    
 
     # Обработка решения
     match decision:
@@ -125,6 +130,7 @@ async def session_interaction_handler(
                         await asyncio.sleep(delay)
                 else:
                     await message.answer(response.replace('"', ''))
+                await message.answer("<i>Персонаж решил уйти...</i>")
                 await session_manager.add_message_to_history(
                     db_user.id, response, is_user=False, tokens_used=tokens_used
                 )
@@ -134,23 +140,31 @@ async def session_interaction_handler(
                 await state.clear()
                 await state.set_state(MainMenu.choosing)
 
-        case "respond" | "escalate" | "self_report" | "shift_topic" | "open_up":
-            if response:
-                if isinstance(response, list):
-                    for part in response:
-                        clean_part = part.replace('"', '')
-                        await message.answer(clean_part)
-                        delay = min(3, max(0.5, len(clean_part) / 100 * random.uniform(1.5, 5.5)))
-                        await asyncio.sleep(delay)
+        case "respond" | "escalate" | "self_report" | "shift_topic" | "open_up": 
+            try:
+                if response:
+                    typing_task = asyncio.create_task(typing_callback())
+                    if isinstance(response, list):
+                        for part in response:
+                            clean_part = part.replace('"', '')
+                            await message.answer(clean_part)
+                            delay = min(3, max(0.5, len(clean_part) / 100 * random.uniform(1.5, 5.5)))
+                            await asyncio.sleep(delay)
+                    else:
+                        await message.answer(response.replace('"', ''))
+                    
+                    await session_manager.add_message_to_history(
+                        db_user.id, " ".join(response) if isinstance(response, list) else response, 
+                        is_user=False, tokens_used=tokens_used
+                    )
+            finally:
+                typing_task.cancel()
+                try:
+                    await typing_task
+                except asyncio.CancelledError:
+                    pass
                 else:
-                    await message.answer(response.replace('"', ''))
-                
-                await session_manager.add_message_to_history(
-                    db_user.id, " ".join(response) if isinstance(response, list) else response, 
-                    is_user=False, tokens_used=tokens_used
-                )
-            else:
-                await message.answer("<code>Персонаж не смог ответить на сообщение.</code>")
+                    await message.answer("<code>Персонаж не смог ответить на сообщение.</code>")
         
         case _:
             await message.answer("<code>Произошла ошибка в поведении персонажа.</code>")
