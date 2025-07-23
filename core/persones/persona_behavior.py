@@ -19,7 +19,7 @@ class PersonaBehavior:
         self.emotional_state = emotional_state or "emotion_neutral"
         self.format = format
         self.history = []
-        
+        self.history_for_meta_ai = []
         self.typing_callback = None
         
         # Инициализация подсистем
@@ -68,7 +68,7 @@ class PersonaBehavior:
             user_message,
             self.resistance_level,
             self.emotional_state,
-            self.history
+            self.history_for_meta_ai
         )
         total_tokens += decision_tokens
         
@@ -86,12 +86,14 @@ class PersonaBehavior:
         if decision == 'silence':
             logger.info(f"{self.name} decided to remain silent")
             self.history.append({"role": "assistant", "content": "*молчание, ваш персонаж (пациент) предпочел не отвечать*"})
+            self.history_for_meta_ai.append({"role": "Вы (пациент)", "content": "*молчание, ваш персонаж (пациент) предпочел не отвечать*"})
             return decision, None, total_tokens
         elif decision == 'disengage':
             try:
                 logger.info(f"{self.name} decided to disengage")
                 typing_task = await self._start_typing_indicator()
                 self.history.append({"role": "assistant", "content": "*Персонаж покидает сессию* " + processed_msg})
+                # нет смысла помещать историю для мета АИ
                 return decision, processed_msg, total_tokens
             finally:
                 if typing_task and not typing_task.done():
@@ -103,15 +105,16 @@ class PersonaBehavior:
         else:
         # Добавляем обработанное сообщение в историю
             try:
-                typing_task = await self._start_typing_indicator()
                 if processed_msg:
                     self.history.append({"role": "user", "content": processed_msg})
+                    self.history_for_meta_ai.append({"role": "Психотерапевт (ваш собеседник)", "content": user_message})
                     logger.debug(f"Added message to history: {processed_msg[:50]}...")
                 
                 # Имитация задержки ответа
                 delay = random.uniform(self.min_delay, self.max_delay)
                 logger.info(f"Simulating thinking delay: {delay:.2f}s")
                 await asyncio.sleep(delay)
+                typing_task = await self._start_typing_indicator()
                 
                 #  Получение ответа от LLM
                 logger.debug(f"Sending to LLM. Last messages: {json.dumps(self.history, ensure_ascii=False)}")
@@ -119,13 +122,12 @@ class PersonaBehavior:
                 total_tokens += response_tokens
                 logger.info(f"Final LLM response: {response}")
                 # Очеловечивание — вторичная генерация с сохранением смысла
-                refined_response, refined_tokens = await self._refine_response_with_style(response, self.history)
+                refined_response, refined_tokens = await self._refine_response_with_style(response, self.history_for_meta_ai)
                 total_tokens += refined_tokens
 
                 response = refined_response 
                 logger.info(f"Final LLM response (with humanization): {response}")
                 logger.info(f"Received response from LLM. Tokens: {response_tokens}, response: {response[:100]}...")
-                
                 # Разделение ответа на части по ||
                 if "||" in refined_response:
                     response_parts = [part.strip() for part in refined_response.split("||") if part.strip()]
@@ -135,8 +137,8 @@ class PersonaBehavior:
                 
                 # Обновление истории (сохраняем как единое сообщение)
                 self.history.append({"role": "assistant", "content": " ".join(response_parts)})
-                
-                
+                self.history_for_meta_ai.append({"role": "Вы (пациент)", "content": " ".join(response_parts)})
+        
                 logger.info(f"{self.name} response complete. Total tokens used: {total_tokens}")
                 return decision, response_parts, total_tokens
             finally:
