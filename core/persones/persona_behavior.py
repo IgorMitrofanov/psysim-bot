@@ -65,7 +65,7 @@ class PersonaBehavior:
     """
 
         # Можно использовать ту же LLM, но с другим system prompt
-        refined_response, tokens_used = await get_response([{"role": "system", "content": prompt}], temperature=1.1)
+        refined_response, tokens_used = await get_response([{"role": "system", "content": prompt}], temperature=1.2)
         return refined_response, tokens_used
 
 

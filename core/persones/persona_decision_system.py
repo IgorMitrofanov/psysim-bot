@@ -53,7 +53,17 @@ class PersonaDecisionSystem:
             emotional_state,
             history
         )
-        
+        # мб добавить простой индикатор — self.therapy_progress, который меняется от -10 до +10 в зависимости от стратегии:
+
+
+        # Стратегия	Влияние
+        # open_up	+2
+        # self_report	+1
+        # respond	+0
+        # shift_topic	-1
+        # silence	-2
+        # disengage	-3
+
         # Обрабатываем решение в зависимости от типа
         if decision == 'disengage':
             base_msg = self._get_disengage_message(emotional_state)
@@ -485,6 +495,15 @@ class PersonaDecisionSystem:
         logger.debug(f"Built enhanced meta prompt:\n{prompt}...")
         return prompt
     
+    # поведенческая инерция — снижать вероятность повторения одной и той же стратегии несколько раз подряд:
+    # нужно более сложно сделать на основе реакций
+
+    # def _penalize_repetitions(self, decision: str) -> str:
+    #     if self.recent_decisions.count(decision) > 2:
+    #         alternatives = [d for d in all_strategies if d != decision]
+    #         return random.choice(alternatives)
+    #     return decision
+        
     async def _salt_message_with_llm(
         self,
         user_message: str,
