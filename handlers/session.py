@@ -59,7 +59,7 @@ router = Router(name="session")
 @asynccontextmanager
 async def session_lock(state: FSMContext):
     """Контекстный менеджер для безопасной работы с состоянием сессии"""
-    lock_timeout = 5  # Максимальное время ожидания блокировки
+    lock_timeout = 3  # Максимальное время ожидания блокировки
     start_time = time.time()
     
     while True:
@@ -248,7 +248,7 @@ async def process_messages_after_delay(
                     total_tokens += tokens_used
                     
                     # Очистка ответа
-                    # refined_response = refined_response.replace("`", "").replace("-", "").replace("'", "")
+                    refined_response = refined_response.replace("`", "").replace("-", "").replace("'", "")
                     
                     logger.info(f"Final LLM response (with humanization): {refined_response}")
                     
@@ -301,7 +301,6 @@ async def process_messages_after_delay(
                         # Если есть, обрабатываем их
                         await process_messages_after_delay(state, message, session, session_manager, 0)
             else:
-                await message.answer("<code>Персонаж предпочел не отвечать на это.</code>")
                 await message.answer("<code>Персонаж предпочел не отвечать на это.</code>")
             try:
                 if db_user:
@@ -371,6 +370,7 @@ async def check_inactivity(state: FSMContext, message: types.Message, delay: int
                     "Дайте знать, если хотите продолжить обсуждение",
                     "Я здесь, если у вас есть что добавить"
                 ]
+                # тут тоже через ЛЛМ надо будет генерить реакцию
                 await message.answer(random.choice(phrases))
                 
                 response_timer = asyncio.create_task(
@@ -411,7 +411,7 @@ async def wait_for_response(
                 
             message_queue = data.get("message_queue", deque())
             if not message_queue:
-                await message.answer("Похоже, сессия прервана. Вы всегда можете начать новый диалог.")
+                await message.answer("<i>Персонаж ушел..</i>")
                 await end_session_cleanup(message, state, session, session_manager)
                 
     except asyncio.CancelledError:
