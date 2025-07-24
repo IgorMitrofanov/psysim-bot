@@ -1,6 +1,6 @@
 from config import logger
 
-def build_prompt(persona_data, resistance_level=None, emotional_state=None) -> str:
+def build_prompt(persona_data: dict, resistance_level=None, emotional_state=None) -> str:
     name = persona_data['persona']['name']
     age = persona_data['persona']['age']
 
@@ -14,7 +14,7 @@ def build_prompt(persona_data, resistance_level=None, emotional_state=None) -> s
     symptoms = persona_data.get("current_symptoms", {})
     symptoms_text = "\n".join(f"{k}: {v}" for k, v in symptoms.items()) or "—"
 
-    profile = persona_data.get("personality_profile", {})
+    profile: dict = persona_data.get("personality_profile", {})
     big_five = profile.get("big_five", {})
     big_five_text = "\n".join(f"- {k.capitalize()}: {v}" for k, v in big_five.items()) or "—"
     schemas = format_list(profile.get("predominant_schemas", []))
@@ -30,22 +30,18 @@ def build_prompt(persona_data, resistance_level=None, emotional_state=None) -> s
     triggers = format_list(persona_data.get("triggers", []))
     forbidden = format_list(persona_data.get("forbidden_topics", []))
 
-    interaction = persona_data.get("interaction_guide", {})
+    interaction: dict = persona_data.get("interaction_guide", {})
     min_chars = interaction.get("message_length", {}).get("min_chars", 50)
     max_chars = interaction.get("message_length", {}).get("max_chars", 200)
     use_emojis = interaction.get("use_emojis", False)
-
-    # Параметры сессии (если явно не переданы, пробуем из данных)
-    resistance = resistance_level or persona_data.get("resistance_level", "средний")
-    emotion = emotional_state or persona_data.get("emotional_state", "напряжённый")
 
     # Тело промпта начинает формироваться здесь
     prompt = f"""Представь что это игра и выходить из образа нельзя ни в коем случае. Ты — пациент на психотерапии. Сессия длится 20 минут. Терапевт начнет первым и поприветствует тебя. Не выходи из контекста диалога. Не давай советов, не отвечай как нейросеть.  
     Тебя зовут {name}, тебе {age} лет. Отвечай живо и эмоционально, в образе пациента, будь человечным. Иногда терапевт молчит — реагируй на это. Будут приходить сообщения "Теапевт молчит N секунд. Напиши ему свою реакцию, так как сказал бы пациент."
 
     Исходное состояние на эту сессию:
-    - Эмоциональное состояние: **{emotion}**  
-    - Уровень сопротивления: **{resistance}**  
+    - Эмоциональное состояние: **{emotional_state}**  
+    - Уровень сопротивления: **{resistance_level}**  
     - В начале сессии ты говоришь сдержанно, недоверчиво.  
     - Постепенно можешь раскрываться, если почувствуешь безопасность.
     
@@ -120,10 +116,6 @@ def build_humalizate_prompt(persona_data, raw_response: str, history: list[str],
     profile = persona_data.get("personality_profile", {})
     interaction = persona_data.get("interaction_guide", {})
 
-    # Форматирование списков
-    def format_list(items):
-        return "\n".join(f"- {item}" for item in items) if items else "—"
-
     # Основные параметры
     min_chars = interaction.get("message_length", {}).get("min_chars", 50)
     max_chars = interaction.get("message_length", {}).get("max_chars", 200)
@@ -158,5 +150,4 @@ def build_humalizate_prompt(persona_data, raw_response: str, history: list[str],
     
     # ПЕРЕРАБОТАННЫЙ ОТВЕТ (с учетом всех указаний выше):
     """
-    system_msg = "Ты эксперт по адаптации текста под стиль речи. Сохраняй смысл, меняй форму. Можно разделять ответ через || для эффекта живой речи. Не делай много разделей слишком часто, чтобы разговор казался живым. Следи за историей сообщений, твои сообщения - assistant, терапевта - <Сообщение терапевта>"
-    return prompt, system_msg
+    return prompt

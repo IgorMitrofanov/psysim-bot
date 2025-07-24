@@ -2,11 +2,8 @@ import random
 from aiogram import Router, types
 from aiogram.fsm.context import FSMContext
 from states import MainMenu
-from keyboards.builder import (
-    subscription_keyboard_when_sessions_left
-)
+from keyboards.builder import subscription_keyboard_when_sessions_left
 from datetime import datetime
-from core.persones.persona_behavior import PersonaBehavior
 from core.persones.persona_loader import load_personas
 from sqlalchemy.ext.asyncio import AsyncSession
 from database.crud import get_user
@@ -16,10 +13,15 @@ from texts.session_texts import (
     NO_QUOTA_OR_BONUS_FOR_SESSION,
     resistance_options,
     emotion_options,
-    NO_PERSONES_TEXT
-)
+    NO_PERSONES_TEXT)
 from services.session_manager import SessionManager
 from core.persones.persona_loader import load_personas
+from core.persones.persona_decision_layer import PersonaDecisionLayer
+from core.persones.persona_humanization_layer import PersonaHumanizationLayer
+from core.persones.persona_instruction_layer import PersonaSalterLayer
+from core.persones.persona_response_layer import PersonaResponseLayer
+
+
 
 router = Router(name="rnd_session")
 
@@ -46,6 +48,7 @@ async def random_session_handler(
         )
         return
     # Загрузка списка персонажей
+    
     personas = load_personas()
     persona_names = list(personas.keys())
     if not persona_names:
@@ -57,7 +60,16 @@ async def random_session_handler(
     persona_name = random.choice(persona_names)
     persona_data = personas[persona_name]
     
-    persona = PersonaBehavior(persona_data, resistance_level=resistance, emotional_state=emotion, format="Текст")
+    # Инициализация 1 слоя ИИ, принятие решений
+    decisioner = PersonaDecisionLayer(persona_data, resistance_level=resistance, emotional_state=emotion)
+    # Инициализация 2 слоя ИИ, для созданий инструкций для третьей нейросети (инструкции добавляются к сообщением юзера, поэтому "подсолка")
+    salter = PersonaSalterLayer(persona_data, resistance_level=resistance, emotional_state=emotion)
+    # Инициализация 3 слоя ИИ, для формирования ответов из подсоленных сообщений с инструкциями
+    responser = PersonaResponseLayer(persona_data, resistance_level=resistance, emotional_state=emotion)
+    # Инициализация 3 слоя ИИ, для хуманизации итогового сообщения
+    humanizator = PersonaHumanizationLayer(persona_data, resistance_level=resistance, emotional_state=emotion)
+    meta_history = []
+    total_tokens = 0
 
     # Создаем сессию
     session_id = await session_manager.start_session(
@@ -71,12 +83,17 @@ async def random_session_handler(
     )
 
     await state.update_data(
-        persona=persona,
         session_start=datetime.utcnow().isoformat(),
         session_id=session_id,
         resistance=resistance,
         emotion=emotion,
-        format="Текст"
+        decisioner=decisioner,
+        responser=responser,
+        format="Текст",
+        meta_history=meta_history,
+        salter=salter,
+        humanizator=humanizator,
+        total_tokens=total_tokens
     )
 
     await callback.message.edit_text(RANDOM_SESSION_STARTED_TEXT)

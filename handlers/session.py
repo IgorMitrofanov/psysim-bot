@@ -10,9 +10,16 @@ from keyboards.builder import (
     persona_selection_menu,
     subscription_keyboard_when_sessions_left
 )
+from core.persones.prompt_builder import build_prompt, build_humalizate_prompt
+from core.persones.llm_engine import get_response
+from handlers.utils import calculate_typing_delay
 from datetime import datetime, timedelta
 from config import config
-from core.persones.persona_behavior import PersonaBehavior
+from typing import List
+from core.persones.persona_decision_layer import PersonaDecisionLayer
+from core.persones.persona_humanization_layer import PersonaHumanizationLayer
+from core.persones.persona_instruction_layer import PersonaSalterLayer
+from core.persones.persona_response_layer import PersonaResponseLayer
 from core.persones.persona_loader import load_personas
 from sqlalchemy.ext.asyncio import AsyncSession
 from database.crud import get_user, save_session
@@ -60,6 +67,7 @@ async def reset_session_handler(
 
     if session_id:
         await session_manager.abort_session(message.from_user.id, session, session_id=session_id)
+        # к аборту сессии надо будет убрать стиране данных сессии - иначе их бесконечно абузить можно
         await message.answer(SESSION_RESET_TEXT)
     else:
         await message.answer(SESSION_RESET_ERROR_TEXT)
@@ -67,7 +75,6 @@ async def reset_session_handler(
     await state.clear()
     await message.answer(BACK_TO_MENU_TEXT, reply_markup=main_menu())
     await state.set_state(MainMenu.choosing)
-
 
 # --- Обработка сообщений во время сессии ---
 @router.message(MainMenu.in_session)
@@ -77,12 +84,26 @@ async def session_interaction_handler(
     session: AsyncSession,
     session_manager: SessionManager
 ):
-    data = await state.get_data()
-    persona: PersonaBehavior = data.get("persona")
-    if not persona:
-        await message.answer(PERSONA_NO_FOUND_TEXT)
-        return
+    # Для индикатора "печатает"
+    async def typing_callback():
+        while True:
+            await message.bot.send_chat_action(message.chat.id, 'typing')
+            await asyncio.sleep(4)
 
+    data = await state.get_data()
+    # История сообщений для мета ИИ (без подсказок с промежуточных слоев)
+    meta_history: List = data.get("meta_history")
+
+    # Загрузим настроеные слои ИИ "персоны" под конкретную сессию
+    decisioner: PersonaDecisionLayer = data.get("decisioner")
+    salter: PersonaSalterLayer = data.get("salter")
+    responser: PersonaResponseLayer = data.get("responser")
+    humanizator: PersonaHumanizationLayer = data.get("humanizator")
+
+    # Общий подсчет токенов
+    total_tokens = data.get("total_tokens")
+
+    # Получаем юзера из БД
     db_user = await get_user(session, telegram_id=message.from_user.id)
 
     # Проверяем, активна ли ещё сессия
@@ -93,71 +114,71 @@ async def session_interaction_handler(
         await state.set_state(MainMenu.choosing)
         return
 
-    # Логируем пользовательское сообщение
+    # Логируем пользовательское сообщение в менеджер сессий (для записи в БД)
     await session_manager.add_message_to_history(
         db_user.id,
         message.text,
         is_user=True,
         tokens_used=len(message.text) // 4
     )
-    
-    async def typing_callback():
-        while True:
-            await message.bot.send_chat_action(message.chat.id, 'typing')
-            await asyncio.sleep(3)
 
-    # Получаем решение и ответ от персонажа TODO: Хотелось бы здесь после каждого сообщения юзера ждать секунд 10, при этом каждое сообщение класть в буфер. и чтобы мы работали с буфером сообщений как с одним - бывает пишут несколькими сообщениями - так живость модели повысится
-    # тогда в персону надо будет посылать строку из склеиных сообщений
-    persona.set_typing_callback(typing_callback)
-    decision, response, tokens_used = await persona.send(message.text)
+    # Помещаем сообщение пользователя в мета-историю
+    meta_history.append({"role": "Психотерапевт (ваш собеседник)", "content": message.text})
 
-    # Обработка решения
-    match decision:
-        case "silence":
-            await message.answer("<code>Персонаж предпочел не отвечать на это.</code>")
-            await session_manager.add_message_to_history(
-                db_user.id, "[silence]", is_user=False, tokens_used=tokens_used
+    # Сначала 1 слой ИИ принимает решение (всегда на основе мета истории, вообще все ИИ кроме основной работают с мета-историей):
+
+    decision, tokens_used = await decisioner.make_decision(message.text, meta_history)
+
+    # Получаем общую хрологию решений для мета-ИИ
+    recent_decisions = decisioner.get_recent_decisions()
+
+    if decision != "silence":
+        try:
+            # Если решение не молчать
+            # Включаем индикатор печатает, т.к. персона точно ответит
+            typing_task = asyncio.create_task(typing_callback())
+            # Надо "подсолить" сообщение юзера для основной ИИ с помощью 2 слоя нейросети
+            salted_msg, tokens_used = await salter.salt_message(message.text, decision, recent_decisions, meta_history)
+            total_tokens += tokens_used
+            # Теперь у нас есть "соленое" сообщение юзера для основной нейросети (3 слой)
+            # Добавляем "соленое" сообщение в историю основной нейросети
+            responser.update_history(salted_msg)
+            # Генерируем ответ у основной нейросети (3 слой)
+            response, tokens_used = await responser.get_response()
+            total_tokens += tokens_used
+            # Хуманизация другой ИИ (4 слой)
+            refined_response, tokens_used = await humanizator.humanization_respond(
+                raw_response=response,
+                history=meta_history
             )
 
-        case "disengage":
-            if response:
-                
-                if isinstance(response, list):
-                    for part in response:
-                        clean_part = part.replace('"', '')
-                        await message.answer(clean_part)
-                        delay = min(3, max(0.5, len(clean_part) / 100 * random.uniform(1.5, 5.5)))
-                        await asyncio.sleep(delay)
-                else:
-                    await message.answer(response.replace('"', ''))
-                await message.answer("<i>Персонаж решил уйти...</i>")
-                await session_manager.add_message_to_history(
-                    db_user.id, response, is_user=False, tokens_used=tokens_used
-                )
-            session_id = data.get("session_id")
-            if session_id:
-                await session_manager.end_session(user_id=db_user.id, db_session=session, session_id=session_id)
-                await state.clear()
-                await state.set_state(MainMenu.choosing)
+            # Удалим мусор, приходится жертвовать тире и ковычками такими, т.к. бывает модели высерают
+            refined_response = refined_response.replace("`", "")
+            refined_response = refined_response.replace("-", "")
+            refined_response = refined_response.replace("'", "")
 
-        case "respond" | "escalate" | "self_report" | "shift_topic" | "open_up": 
-            try:
-                if response:
-                    typing_task = asyncio.create_task(typing_callback())
-                    if isinstance(response, list):
-                        for part in response:
-                            clean_part = part.replace('"', '')
-                            await message.answer(clean_part)
-                            delay = min(3, max(0.5, len(clean_part) / 100 * random.uniform(1.5, 5.5)))
-                            await asyncio.sleep(delay)
-                    else:
-                        await message.answer(response.replace('"', ''))
-                    
-                    await session_manager.add_message_to_history(
-                        db_user.id, " ".join(response) if isinstance(response, list) else response, 
-                        is_user=False, tokens_used=tokens_used
-                    )
-            finally:
+            total_tokens += tokens_used
+
+            logger.info(f"Final LLM response (with humanization): {refined_response}")
+            # Разделение ответа на части по ||
+            if "||" in refined_response:
+                response_parts = [part.strip() for part in refined_response.split("||") if part.strip()]
+                logger.info(f"Split response into parts: {response_parts}")
+            else:
+                response_parts = [refined_response]
+            
+            # Обновление истории (сохраняем как единое сообщение)
+            responser.update_history(" ".join(response_parts), False)
+            meta_history.append({"role": "Вы (пациент)", "content": " ".join(response_parts)})
+            if isinstance(response_parts, list):
+                for part in response_parts:
+                    clean_part = part.replace('"', '')
+                    delay = calculate_typing_delay(clean_part)
+                    await asyncio.sleep(delay)
+                    await message.answer(clean_part)
+            else:
+                await message.answer(response_parts.replace('"', ''))
+        finally:
                 typing_task.cancel()
                 try:
                     await typing_task
@@ -165,18 +186,30 @@ async def session_interaction_handler(
                     pass
                 else:
                     await message.answer("<code>Персонаж не смог ответить на сообщение.</code>")
-        
-        case _:
-            await message.answer("<code>Произошла ошибка в поведении персонажа.</code>")
-            logger.warning(f"Неизвестное решение персонажа: {decision}")
+        if decision == "disengage":
+            # если решение было уйти - завершаем сессию
+            await message.answer("<i>Персонаж решил уйти...</i>")
+            await session_manager.add_message_to_history(db_user.id, response_parts, is_user=False, tokens_used=tokens_used)
+            session_id = data.get("session_id")
+            if session_id:
+                await session_manager.end_session(user_id=db_user.id, db_session=session, session_id=session_id)
+                await state.clear()
+                await state.set_state(MainMenu.choosing)
+    else:
+        # просто молчим
+        await message.answer("<code>Персонаж предпочел не отвечать на это.</code>")
+        # Добавляем в БД что персона молчит
+        await session_manager.add_message_to_history(db_user.id, "[silence]", is_user=False, tokens_used=tokens_used)
+        # Обновляем историю для основной нейросети и мета-историю
+        responser.update_history("*молчание, ваш персонаж (пациент) предпочел не отвечать*", False)
+        meta_history.append({"role": "Вы (пациент)", "content": "*молчание, ваш персонаж (пациент) предпочел не отвечать*"})
 
 # --- Старт сессии ---
 @router.callback_query(lambda c: c.data == "main_start_session")
 async def main_start_session_handler(
     callback: types.CallbackQuery, 
     state: FSMContext, 
-    session: AsyncSession,
-    session_manager
+    session: AsyncSession
 ):
     db_user = await get_user(session, telegram_id=callback.from_user.id)
     if not db_user:
@@ -195,7 +228,7 @@ async def session_confirm_handler(
     callback: types.CallbackQuery, 
     state: FSMContext, 
     session: AsyncSession,
-    session_manager
+    session_manager: SessionManager
 ):
     await callback.answer()
     match callback.data:
@@ -215,11 +248,22 @@ async def session_confirm_handler(
             emotion_raw = data.get("emotion")
             format_raw = data.get("format")
             
-            res_lvl =res_map.get(resistance_raw)
-            emo_lvl = emo_map.get(emotion_raw)
+            resistance =res_map.get(resistance_raw)
+            emotion = emo_map.get(emotion_raw)
             format = format_map.get(format_raw)
-            # Создаем "персону" и задаем ей состояние 
-            persona = PersonaBehavior(persona_data, resistance_level=res_lvl, emotional_state=emo_lvl, format=format)
+            
+            # Инициализация 1 слоя ИИ, принятие решений
+            decisioner = PersonaDecisionLayer(persona_data, resistance_level=resistance, emotional_state=emotion)
+            # Инициализация 2 слоя ИИ, для созданий инструкций для третьей нейросети (инструкции добавляются к сообщением юзера, поэтому "подсолка")
+            salter = PersonaSalterLayer(persona_data, resistance_level=resistance, emotional_state=emotion)
+            # Инициализация 3 слоя ИИ, для формирования ответов из подсоленных сообщений с инструкциями
+            responser = PersonaResponseLayer(persona_data, resistance_level=resistance, emotional_state=emotion)
+            # Инициализация 3 слоя ИИ, для хуманизации итогового сообщения
+            humanizator = PersonaHumanizationLayer(persona_data, resistance_level=resistance, emotional_state=emotion)
+            meta_history = []
+            total_tokens = 0
+
+            
             # Получаем юзера из БД
             db_user = await get_user(session, telegram_id=callback.from_user.id)
             if not db_user:
@@ -243,24 +287,29 @@ async def session_confirm_handler(
                 user_id=db_user.id,
                 is_free=is_free,
                 persona_name=persona_name,
-                resistance=res_lvl,
-                emotion=emo_lvl
+                resistance=emotion,
+                emotion=resistance
             )
             # Обновляем данные в стейт
             await state.update_data(
-                persona=persona,
                 session_start=datetime.utcnow().isoformat(),
                 session_id=session_id,
-                resistance=res_lvl,
-                emotion=emo_lvl,
-                format=format
+                resistance=resistance,
+                emotion=emotion,
+                format=format,
+                decisioner=decisioner,
+                responser=responser,
+                meta_history=meta_history,
+                salter=salter,
+                humanizator=humanizator,
+                total_tokens=total_tokens
             )
             # Сообщение о начале сессии
             await callback.message.edit_text(
                 SESSION_STARTED_TEXT.format(
-                    resistance=res_lvl,
-                    emotion=emo_lvl,
-                    selected_persona=persona.name,
+                    resistance=resistance,
+                    emotion=emotion,
+                    selected_persona=persona_data['persona']['name'],
                     format=format
                 )
             )

@@ -3,7 +3,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from .models import User, Referral
 from sqlalchemy.exc import NoResultFound
-from core.persones.persona_behavior import PersonaBehavior
 from database.models import Session
 
 async def get_user(session: AsyncSession, telegram_id: int) -> User | None:
@@ -73,7 +72,7 @@ async def get_user_referrals(session: AsyncSession, inviter_id: int):
 async def save_session(
     session: AsyncSession,
     user_id: int,
-    persona: PersonaBehavior,
+    main_history: list[dict],
     state_data: dict
 ) -> bool:
     """Сохраняет сессию в БД с полной информацией"""
@@ -92,8 +91,8 @@ async def save_session(
         return False
     
     # Сохраняем историю из persona
-    user_msgs = [msg['content'] for msg in persona.get_history() if msg['role'] == 'user']
-    bot_msgs = [msg['content'] for msg in persona.get_history() if msg['role'] == 'assistant']
+    user_msgs = [msg['content'] for msg in main_history if msg['role'] == 'user']
+    bot_msgs = [msg['content'] for msg in main_history if msg['role'] == 'assistant']
     
     db_session.ended_at = datetime.utcnow()
     db_session.is_active = False
