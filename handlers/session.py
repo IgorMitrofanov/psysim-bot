@@ -47,6 +47,7 @@ from aiogram.types import Message
 from services.session_manager import SessionManager
 from aiogram.filters import Command
 from config import logger
+
 router = Router(name="session")
 
 # ВАЖНО: Здесь используется абстрактный менеджер работы с сессиями, он работает с user_id [int] - это айди из БД, не телеграм айди!
@@ -176,8 +177,7 @@ async def session_interaction_handler(
                     delay = calculate_typing_delay(clean_part)
                     await asyncio.sleep(delay)
                     await message.answer(clean_part)
-            else:
-                await message.answer(response_parts.replace('"', ''))
+                typing_task.cancel()
         finally:
                 typing_task.cancel()
                 try:
@@ -189,7 +189,7 @@ async def session_interaction_handler(
         if decision == "disengage":
             # если решение было уйти - завершаем сессию
             await message.answer("<i>Персонаж решил уйти...</i>")
-            await session_manager.add_message_to_history(db_user.id, response_parts, is_user=False, tokens_used=tokens_used)
+            await session_manager.add_message_to_history(db_user.id, response_parts, is_user=False, tokens_used=total_tokens)
             session_id = data.get("session_id")
             if session_id:
                 await session_manager.end_session(user_id=db_user.id, db_session=session, session_id=session_id)
