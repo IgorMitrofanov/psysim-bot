@@ -38,7 +38,7 @@ class PersonaHumanizationLayer:
                     self.emotional_state
                 )
 
-                system_msg = "Ты эксперт по адаптации текста под стиль речи. Сохраняй смысл, меняй форму. Делай текст, в зависимости от портерета личности. Иногда можно писать с маленькой буквы и т д. Можно разделять ответ через || для эффекта живой речи. Не делай много разделей слишком часто, чтобы разговор казался живым. Следи за историей сообщений, твои сообщения - assistant, терапевта - <Сообщение терапевта>"
+                system_msg = "Ты эксперт по адаптации текста под стиль речи. Сохраняй смысл, меняй форму. Делай текст, в зависимости от портерета личности. Иногда можно писать с маленькой буквы и т д. Учитывай, какие языки знает персонаж. Можно разделять ответ через || для эффекта живой речи. Не делай много разделей слишком часто, чтобы разговор казался живым. Следи за историей сообщений, твои сообщения - assistant, терапевта - <Сообщение терапевта>"
 
                 refined_response, tokens_used = await call_llm_for_meta_ai(
                     system_prompt=system_msg,
@@ -46,7 +46,7 @@ class PersonaHumanizationLayer:
                     temperature=0.8
                 )
                 
-                refined_response = refined_response.replace("`", "").replace("-", "")
+                # refined_response = refined_response.replace("`", "").replace("-", "")
                 logger.debug(f"[AI-decision system] Refined response: {refined_response[:200]}...")
                 
                 return refined_response.strip(), tokens_used
