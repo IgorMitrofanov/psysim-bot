@@ -25,7 +25,7 @@ PROCESSING_DELAY = 10 # ожидание после последнего соо�
 
 INACTIVITY_DELAY = 120 # через сколько среагируем на молчание
 
-# --- Улучшенное логирование ---
+# --- Логирование ---
 def log_timer_operation(timer_name: str, operation: str, session_id: Optional[str] = None, user_id: Optional[int] = None):
     """Логирует операции с таймерами"""
     context = []
@@ -162,11 +162,53 @@ class SafeTimer:
         except Exception as e:
             logger.error(f"[TIMER {self.name.upper()}] ERROR DURING CANCELLATION: {e} | session_id={self.session_id} | user_id={self.user_id}")
 
-async def is_session_active(state: FSMContext) -> bool:
-    """Проверяет, активна ли сессия"""
+async def is_session_active(
+    state: FSMContext,
+    session_manager: Optional[SessionManager] = None,
+    db_session: Optional[AsyncSession] = None
+) -> bool:
+    """
+    Проверяет, активна ли сессия, учитывая:
+    1. Состояние FSM
+    2. Данные в состоянии
+    3. Статус в SessionManager (если предоставлены)
+    
+    Args:
+        state: Контекст состояния FSM
+        session_manager: Опционально - менеджер сессий
+        db_session: Опционально - сессия базы данных
+        
+    Returns:
+        bool: True если сессия активна во всех источниках
+    """
+    # Проверяем состояние FSM и наличие session_id
     current_state = await state.get_state()
     data = await state.get_data()
-    return current_state == MainMenu.in_session and data.get('session_id') is not None
+    session_id = data.get('session_id')
+    user_id = data.get('user_id')
+    
+    # Базовая проверка состояния FSM
+    if current_state != MainMenu.in_session or not session_id:
+        return False
+    
+    # Если не предоставлены session_manager или db_session, возвращаем результат по FSM
+    if session_manager is None or db_session is None:
+        return True
+    
+    try:
+        # Проверяем статус сессии в менеджере
+        is_active_in_manager = await session_manager.is_session_active(
+            user_id=user_id,
+            session_id=session_id,
+            db_session=db_session
+        )
+        
+        # Сессия активна только если активна и в FSM и в менеджере
+        return is_active_in_manager
+    except Exception as e:
+        logger.error(f"Error checking session status in manager: {e} | session_id={session_id} | user_id={user_id}")
+        # В случае ошибки считаем сессию неактивной для безопасности
+        return False
 
 async def clear_all_timers(state: FSMContext):
     """Отменяет все активные таймеры и очищает ссылки на них"""
@@ -209,12 +251,6 @@ async def session_interaction_handler(
             logger.error(f"User not found in database | telegram_id={message.from_user.id}")
             return
         
-        # Проверяем, активна ли ещё сессия
-        if not await session_manager.is_session_active(db_user.id, session):
-            logger.warning(f"Session is no longer active | session_id={session_id} | user_id={user_id}")
-            await end_session_cleanup(message, state, session, session_manager)
-            return
-        
         # Если бот уже отвечает, добавляем сообщение в очередь
         if data.get("is_bot_responding", False):
             message_queue = data.get("message_queue", deque())
@@ -238,6 +274,12 @@ async def session_interaction_handler(
             if timer := data.get(timer_name):
                 logger.debug(f"Cancelling previous {timer_name} | session_id={session_id} | user_id={user_id}")
                 await timer.cancel()
+                
+        # Проверяем, активна ли ещё сессия
+        if not await session_manager.is_session_active(db_user.id, session):
+            logger.warning(f"Session is no longer active | session_id={session_id} | user_id={user_id}")
+            await end_session_cleanup(message, state, session, session_manager)
+            return
         
         # Добавляем сообщение в очередь
         message_queue = data.get("message_queue", deque())
@@ -543,47 +585,6 @@ async def check_inactivity(
         logger.debug(f"Inactivity check cancelled | session_id={session_id} | user_id={user_id}")
     except Exception as e:
         logger.error(f"Inactivity check error: {e} | session_id={session_id} | user_id={user_id}")
-
-async def wait_for_response(
-    state: FSMContext,
-    message: types.Message,
-    session: AsyncSession,
-    session_manager: SessionManager,
-    delay: int
-):
-    """Ожидает ответа после проверки активности"""
-    data = await state.get_data()
-    session_id = data.get("session_id")
-    user_id = data.get("user_id")
-    
-    logger.debug(f"Waiting for response (delay={delay}s) | session_id={session_id} | user_id={user_id}")
-    
-    try:
-        await asyncio.sleep(delay)
-        
-        async with session_lock(state):
-            if not await is_session_active(state):
-                logger.debug(f"Session ended before response wait completed | session_id={session_id} | user_id={user_id}")
-                return
-                
-            data = await state.get_data()
-            
-            if data.get('is_bot_responding', False):
-                logger.debug(f"Bot is responding - skipping response wait | session_id={session_id} | user_id={user_id}")
-                return
-            
-            last_activity = data.get('last_activity', datetime.min)
-            last_check = data.get('inactivity_check_time', datetime.min)
-            
-            if last_activity > last_check:
-                logger.debug(f"Activity detected during response wait | session_id={session_id} | user_id={user_id}")
-                return  # Была активность
-                
-            message_queue = data.get("message_queue", deque())
-            if not message_queue:
-                logger.debug(f"No response received, ending session | session_id={session_id} | user_id={user_id}")
-                await message.answer("<i>Персонаж ушел..</i>")
-                await end_session_cleanup(message, state, session, session_manager)
                 
     except asyncio.CancelledError:
         logger.debug(f"Response wait cancelled | session_id={session_id} | user_id={user_id}")
@@ -611,7 +612,7 @@ async def end_session_cleanup(
             # Ждем завершения ответа бота, если он в процессе
             while data.get("is_bot_responding", False):
                 logger.debug(f"Waiting for bot to finish responding | session_id={session_id} | user_id={user_id}")
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(5)
                 data = await state.get_data()
 
             # Отменяем все таймеры и очищаем их из состояния
