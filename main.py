@@ -8,6 +8,7 @@ from database.models import Base
 from handlers import routers
 from middlewares.db import DBSessionMiddleware
 from services.session_manager import SessionManager
+from services.timer_manager import TimerManager
 
 async def init_db():
     logger.debug("database init")

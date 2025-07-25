@@ -131,45 +131,6 @@ class SessionManager:
         except Exception as e:
             logger.error(f"Error in session timeout check: {e}")
             
-    async def abort_session(self, user_id: int, db_session: AsyncSession, session_id: Optional[int] = None):
-        """
-        Принудительно завершает сессию и удаляет её из БД.
-        Также очищает состояние в памяти и отменяет таймер.
-        """
-        try:
-            # Уведомляем юзера
-            await self.notify_session_end(user_id, db_session)
-            # Выставляем флаг окончания сессии
-            self.session_ended[user_id] = True
-
-            # Пытаемся получить айди сессии
-            if not session_id and user_id in self.message_history:
-                session_id = self.message_history[user_id].get("session_id")
-
-            if session_id:
-                stmt = select(DBSession).where(DBSession.id == session_id)
-                result = await db_session.execute(stmt)
-                session = result.scalar_one_or_none()
-                if session:
-                    # Стираем запись о прерванной сессии
-                    await db_session.delete(session)
-                    await db_session.commit()
-                    logger.info(f"Session {session_id} deleted from DB for user {user_id}")
-
-            # Удаляем историю сообщений
-            if user_id in self.message_history:
-                del self.message_history[user_id]
-            
-            # Убираем таймер
-            if user_id in self.active_checks:
-                self.active_checks[user_id].cancel()
-                del self.active_checks[user_id]
-
-            logger.info(f"Session aborted for user {user_id} (removed from memory and DB)")
-            return True
-        except Exception as e:
-            logger.error(f"Error aborting session for user {user_id}: {e}")
-            return False
 
     async def end_session(self, user_id: int, session_id: int, db_session: AsyncSession, persona: Optional[object] = None):
         """Завершает сессию и сохраняет данные"""

@@ -144,7 +144,7 @@ class PersonaDecisionLayer:
                 parts = response.split("decision:")
                 reasoning = parts[0].strip()
                 decision = parts[1].strip().lower()
-                
+                # возврат причины
                 # Логируем обоснование
                 logger.info(f"[AI-decision-layer] Decision is {decision}, reasoning: {reasoning}, tokens used: {tokens}")
             else:
