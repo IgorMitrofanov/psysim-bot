@@ -13,6 +13,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копируем остальные файлы
 COPY . .
 
+EXPOSE 55055
+
 # Устанавливаем переменные окружения
 ENV PYTHONUNBUFFERED=1
 ENV BOT_TOKEN=${BOT_TOKEN}
