@@ -174,7 +174,7 @@ async def clear_all_timers(state: FSMContext):
     """Отменяет все активные таймеры и очищает ссылки на них"""
     data = await state.get_data()
     cancelled = 0
-    for timer_name in ['inactivity_timer', 'processing_timer', 'response_timer']:
+    for timer_name in ['inactivity_timer', 'processing_timer']:
         timer = data.get(timer_name)
         if timer:
             try:
@@ -185,7 +185,6 @@ async def clear_all_timers(state: FSMContext):
     await state.update_data({
         'inactivity_timer': None,
         'processing_timer': None,
-        'response_timer': None
     })
     logger.debug(f"Cancelled {cancelled} timers")
 
@@ -206,10 +205,6 @@ async def session_interaction_handler(
     log_session_operation("message received", session_id, user_id)
     
     async with session_lock(state):
-        if not await is_session_active(state):
-            logger.warning(f"Message received but session already ended | session_id={session_id} | user_id={user_id}")
-            await message.answer("⚠️ Сессия уже завершена. Начните новую, если хотите продолжить.")
-            return
             
         db_user = await get_user(session, telegram_id=message.from_user.id)
         if not db_user:
@@ -285,8 +280,8 @@ async def process_messages_after_delay(
     
     try:
         async with session_lock(state):
-            if not await is_session_active(state):
-                logger.debug(f"Session ended before processing | session_id={session_id} | user_id={user_id}")
+            if not await session_manager.is_session_active(user_id, session):
+                logger.debug(f"Session ended before inactivity check | session_id={session_id} | user_id={user_id}")
                 return
             
             # Устанавливаем флаг ответа бота
@@ -489,18 +484,16 @@ async def check_inactivity(
     logger.debug(f"Starting inactivity check (delay={delay}s) | session_id={session_id} | user_id={user_id}")
     
     try:
-        await asyncio.sleep(delay)
-        
         async with session_lock(state):
-            if not await is_session_active(state):
+            # Проверяем, активна ли ещё сессия
+            if not await session_manager.is_session_active(user_id, session):
                 logger.debug(f"Session ended before inactivity check | session_id={session_id} | user_id={user_id}")
                 return
                 
             data = await state.get_data()
-            # Если бот отвечает, откладываем завершение сессии
+            # Если бот отвечает, откладываем проверку неактивности
             if data.get('is_bot_responding', False):
-                logger.debug(f"Bot is responding - postponing session end | session_id={session_id} | user_id={user_id}")
-                await state.update_data(should_end_session_after_response=True)
+                logger.debug(f"Bot is responding - postponing inactivity check | session_id={session_id} | user_id={user_id}")
                 return
             
             last_activity = data.get('last_activity', datetime.min)
@@ -515,31 +508,43 @@ async def check_inactivity(
             message_queue = data.get("message_queue", deque())
             
             if not message_queue:
-                logger.debug(f"No messages in queue, sending reminder | session_id={session_id} | user_id={user_id}")
-                # TODO: генерация ЛЛМ
-                phrases = [
-                    "Я заметил паузу в нашем диалоге... вы всё ещё здесь?",
-                    "Дайте знать, если хотите продолжить обсуждение",
-                    "Я здесь, если у вас есть что добавить"
-                ]
-                reminder = random.choice(phrases)
-                await message.answer(reminder)
+                logger.debug(f"No messages in queue, adding silence message | session_id={session_id} | user_id={user_id}")
                 
-                response_timer = SafeTimer("response_wait", state)
-                await response_timer.start(RESPONSE_DELAY, wait_for_response, state, message, session, session_manager, RESPONSE_DELAY)
+                # Добавляем специальное сообщение о молчании в очередь
+                silence_message = f"*молчание в течение {INACTIVITY_DELAY} секунд...*"
+                message_queue.append(silence_message)
                 
+                # Обновляем состояние с новой очередью и флагом ответа бота
                 await state.update_data(
-                    response_timer=response_timer,
-                    inactivity_check_time=datetime.now()
+                    message_queue=message_queue,
+                    is_bot_responding=True,
+                    last_activity=datetime.now()  # Обновляем активность
                 )
-                logger.debug(f"Reminder sent and response timer started | session_id={session_id} | user_id={user_id}")
+                
+                 # Логируем пользовательские сообщения
+                db_user = await get_user(session, telegram_id=message.from_user.id)
+                if db_user:
+                    logger.debug(f"Adding user message to history | session_id={session_id} | user_id={user_id}")
+                    await session_manager.add_message_to_history(
+                        db_user.id,
+                        silence_message,
+                        is_user=True,
+                        tokens_used=0 # Логгированием сообщение пользователя о молчании
+                    )
+                
+                # Запускаем обработку сообщения о молчании
+                await process_messages_after_delay(
+                    state, 
+                    message, 
+                    session, 
+                    session_manager, 
+                    0  # Немедленная обработка
+                )
                 
     except asyncio.CancelledError:
         logger.debug(f"Inactivity check cancelled | session_id={session_id} | user_id={user_id}")
     except Exception as e:
         logger.error(f"Inactivity check error: {e} | session_id={session_id} | user_id={user_id}")
-    finally:
-        await session.close()
 
 async def wait_for_response(
     state: FSMContext,
@@ -612,7 +617,7 @@ async def end_session_cleanup(
                 data = await state.get_data()
 
             # Отменяем все таймеры и очищаем их из состояния
-            timer_names = ['inactivity_timer', 'processing_timer', 'response_timer']
+            timer_names = ['inactivity_timer', 'processing_timer']
             cancelled_timers = 0
             
             for timer_name in timer_names:
@@ -629,7 +634,6 @@ async def end_session_cleanup(
             await state.update_data({
                 'inactivity_timer': None,
                 'processing_timer': None,
-                'response_timer': None,
                 'message_queue': deque(),
                 'is_bot_responding': False
             })

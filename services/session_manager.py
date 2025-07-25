@@ -11,6 +11,7 @@ from texts.common import BACK_TO_MENU_TEXT
 from config import logger 
 import json
 from config import config
+from asyncio import Lock
 
 # --- Менеджер сессий ---
 # Осуществляет управление сессиями: начало, окончание, нотификация юзера, хранение данных сессии и их запись в БД
@@ -20,6 +21,7 @@ class SessionManager:
         self.active_checks = {}   # Список активных сессий для таймера
         self.message_history = {} # История сообщений - юзера и персоны
         self.session_ended = {}   # Флаг окончания сессии для каждого пользователя
+        self.lock = Lock()
 
     async def start_session(
         self,
@@ -135,59 +137,62 @@ class SessionManager:
     async def end_session(self, user_id: int, session_id: int, db_session: AsyncSession, persona: Optional[object] = None):
         """Завершает сессию и сохраняет данные"""
         try:
-            # Отправим юзеру сообщение об окончании сессии
-            await self.notify_session_end(user_id, db_session)
-            # Выставляем флаг окончания сессии
-            self.session_ended[user_id] = True
-            
-            
-            stmt = select(DBSession).where(
-                DBSession.id == session_id,
-                DBSession.user_id == user_id
-            )
-            result = await db_session.execute(stmt)
-            session = result.scalar_one_or_none()
-            
-            if session:
-                history = self.message_history.get(user_id, {})
-                # тут сохраняются сообщения при завершении сесиии
-                session.ended_at = datetime.utcnow()
-                session.is_active = False
-                session.user_messages = json.dumps(history.get('user_messages', []), ensure_ascii=False)
-                session.bot_messages = json.dumps(history.get('bot_messages', []), ensure_ascii=False)
-                session.tokens_spent = history.get('tokens_spent', 0)
+            async with self.lock:
+                # Отправим юзеру сообщение об окончании сессии
+                await self.notify_session_end(user_id, db_session)
+                # Выставляем флаг окончания сессии
+                self.session_ended[user_id] = True
                 
-                await db_session.commit()
                 
-                if user_id in self.message_history:
-                    del self.message_history[user_id]
+                stmt = select(DBSession).where(
+                    DBSession.id == session_id,
+                    DBSession.user_id == user_id,
+                    timeout=5.0
+                )
+                result = await db_session.execute(stmt)
+                session = result.scalar_one_or_none()
                 
-                if user_id in self.active_checks:
-                    self.active_checks[user_id].cancel()
-                    del self.active_checks[user_id]
+                if session:
+                    history = self.message_history.get(user_id, {})
+                    # тут сохраняются сообщения при завершении сесиии
+                    session.ended_at = datetime.utcnow()
+                    session.is_active = False
+                    session.user_messages = json.dumps(history.get('user_messages', []), ensure_ascii=False)
+                    session.bot_messages = json.dumps(history.get('bot_messages', []), ensure_ascii=False)
+                    session.tokens_spent = history.get('tokens_spent', 0)
+                    
+                    await db_session.commit()
+                    
+                    if user_id in self.message_history:
+                        del self.message_history[user_id]
+                    
+                    if user_id in self.active_checks:
+                        self.active_checks[user_id].cancel()
+                        del self.active_checks[user_id]
+                    
+                    logger.info(f"Session {session_id} ended for user {user_id}")
+                    return True
                 
-                logger.info(f"Session {session_id} ended for user {user_id}")
-                return True
-            
-            logger.warning(f"No active session found for user {user_id} to end")
-            return False
+                logger.warning(f"No active session found for user {user_id} to end")
+                return False
         except Exception as e:
             logger.error(f"Error ending session: {e}")
             return False
 
     async def add_message_to_history(self, user_id: int, message: str, is_user: bool, tokens_used: int):
         """Добавляет сообщение и примерное количество токенов в историю сессии"""
-        if user_id not in self.message_history or self.session_ended.get(user_id, False):
-            return
+        async with self.lock:
+            if user_id not in self.message_history or self.session_ended.get(user_id, False):
+                return
 
-        if is_user:
-            self.message_history[user_id]['user_messages'].append(message)
-        else:
-            self.message_history[user_id]['bot_messages'].append(message)
+            if is_user:
+                self.message_history[user_id]['user_messages'].append(message)
+            else:
+                self.message_history[user_id]['bot_messages'].append(message)
 
-        self.message_history[user_id]['tokens_spent'] = (
-            self.message_history[user_id].get('tokens_spent', 0) + tokens_used
-        )
+            self.message_history[user_id]['tokens_spent'] = (
+                self.message_history[user_id].get('tokens_spent', 0) + tokens_used
+            )
 
     async def is_session_active(
         self,
@@ -222,9 +227,10 @@ class SessionManager:
 
     async def cleanup(self):
         """Очистка при завершении работы"""
-        for user_id, task in self.active_checks.items():
+        tasks = list(self.active_checks.values())
+        for task in tasks:
             task.cancel()
-            logger.info(f"Cancelled session check for user {user_id}")
+        await asyncio.gather(*tasks, return_exceptions=True)
         self.active_checks.clear()
         self.message_history.clear()
         self.session_ended.clear()

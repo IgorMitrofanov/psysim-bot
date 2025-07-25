@@ -127,6 +127,7 @@ async def session_confirm_handler(
             await state.update_data(
                 session_start=datetime.utcnow().isoformat(),
                 session_id=session_id,
+                user_id=db_user.id,
                 resistance=resistance,
                 emotion=emotion,
                 format=format,

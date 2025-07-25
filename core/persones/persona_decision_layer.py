@@ -3,6 +3,7 @@ import logging
 
 from config import logger
 from core.persones.llm_engine import call_llm_for_meta_ai
+from datetime import datetime
 
 VALID_DECISIONS = {
     'respond', 
@@ -48,7 +49,7 @@ class PersonaDecisionLayer:
         Args:
             persona_data: Данные персонажа (биография, профиль личности и т.д.)
             context: Текущий контекст/сообщение от терапевта
-            resistance_level: Уровень сопротивления ('low', 'medium', 'high')
+            resistance_level: Уровень сопротивления ('средний', 'высокий')
             emotional_state: Текущее эмоциональное состояние
             history: История диалога в формате списка сообщений
             
@@ -70,33 +71,37 @@ class PersonaDecisionLayer:
         llm_decision, llm_tokens = await self._get_llm_decision(prompt)
         tokens_used += llm_tokens
         
-        # 3. Валидация и сохранение решения
-        decision = self._validate_and_store_decision(llm_decision)
         
-        return decision, tokens_used
+        return llm_decision, tokens_used
 
-    def _validate_and_store_decision(self, decision: str) -> str:
-        """Валидирует и сохраняет решение в истории."""
-        # Сохраняем решение в истории
-        self.recent_decisions.append(decision)
-        if len(self.recent_decisions) > self.max_decision_history:
-            self.recent_decisions.pop(0)
-        
+    def _validate_and_store_decision(self, decision: str, reasoning: str) -> str:
+        """Валидирует и сохраняет решение в истории вместе с обоснованием."""
         # Валидация решения
         if decision not in VALID_DECISIONS:
             logger.warning(f"[AI-decision-layer] Invalid LLM decision: {decision}. Falling back to 'respond'")
-            return "respond"
+            decision = "respond"
+            reasoning = "Автоматическое резервное решение из-за недопустимого ответа LLM"
+        
+        # Сохраняем решение в истории
+        self.recent_decisions.append({
+            'decision': decision,
+            'reasoning': reasoning,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+        if len(self.recent_decisions) > self.max_decision_history:
+            self.recent_decisions.pop(0)
             
         return decision
     
-    def get_recent_decisions(self, count: Optional[int] = None) -> List[str]:
-        """Returns the most recent decisions made by the persona.
+    def get_recent_decisions(self, count: Optional[int] = None) -> List[Dict[str, str]]:
+        """Возвращает последние принятые решения с обоснованиями.
         
         Args:
-            count: Number of recent decisions to return. If None, returns all.
+            count: Количество последних решений для возврата. Если None, возвращает все.
             
         Returns:
-            List of recent decisions in chronological order (newest last).
+            Список словарей с ключами 'decision' и 'reasoning' в хронологическом порядке (новейшие последними).
         """
         if count is None:
             return self.recent_decisions.copy()
@@ -144,6 +149,9 @@ class PersonaDecisionLayer:
                 parts = response.split("decision:")
                 reasoning = parts[0].strip()
                 decision = parts[1].strip().lower()
+                
+                # 3. Валидация и сохранение решения
+                decision = self._validate_and_store_decision(decision, reasoning)
                 # возврат причины
                 # Логируем обоснование
                 logger.info(f"[AI-decision-layer] Decision is {decision}, reasoning: {reasoning}, tokens used: {tokens}")
