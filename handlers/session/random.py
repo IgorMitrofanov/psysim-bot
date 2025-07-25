@@ -23,7 +23,7 @@ from core.persones.persona_response_layer import PersonaResponseLayer
 
 
 
-router = Router(name="rnd_session")
+router = Router(name="session_random")
 
 # --- Хендлер рандомной сессии - "Случайный клиент" из главного меню ---
 @router.callback_query(lambda c: c.data == "random_session")

@@ -132,7 +132,7 @@ class PersonaDecisionLayer:
         """
         
         try:
-            response, tokens = await self.call_llm_for_meta_ai(
+            response, tokens = await call_llm_for_meta_ai(
                 system_prompt=system_prompt,
                 user_prompt=prompt,
                 temperature=DECISION_LAYER_TEMP

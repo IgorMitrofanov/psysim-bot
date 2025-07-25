@@ -137,7 +137,8 @@ class SessionManager:
         Также очищает состояние в памяти и отменяет таймер.
         """
         try:
-            
+            # Уведомляем юзера
+            await self.notify_session_end(user_id, db_session)
             # Выставляем флаг окончания сессии
             self.session_ended[user_id] = True
 
@@ -173,7 +174,8 @@ class SessionManager:
     async def end_session(self, user_id: int, session_id: int, db_session: AsyncSession, persona: Optional[object] = None):
         """Завершает сессию и сохраняет данные"""
         try:
-            
+            # Отправим юзеру сообщение об окончании сессии
+            await self.notify_session_end(user_id, db_session)
             # Выставляем флаг окончания сессии
             self.session_ended[user_id] = True
             
@@ -187,16 +189,12 @@ class SessionManager:
             
             if session:
                 history = self.message_history.get(user_id, {})
-                
+                # тут сохраняются сообщения при завершении сесиии
                 session.ended_at = datetime.utcnow()
                 session.is_active = False
                 session.user_messages = json.dumps(history.get('user_messages', []), ensure_ascii=False)
                 session.bot_messages = json.dumps(history.get('bot_messages', []), ensure_ascii=False)
                 session.tokens_spent = history.get('tokens_spent', 0)
-
-                if persona:
-                    session.resistance_level = persona.resistance_level
-                    session.emotional = persona.emotional_state
                 
                 await db_session.commit()
                 
@@ -292,3 +290,20 @@ class SessionManager:
         else:
             # Ресурсов нет
             return False, False
+        
+    async def notify_session_end(self, user_id: int, db_session: AsyncSession):
+        """Уведомляет пользователя об окончании сессии"""
+        telegram_id = await get_telegram_id_by_user_id(db_session, user_id)
+        try:
+            await self.bot.send_message(
+                telegram_id,
+                "⌛️ Время сессии истекло. Сессия сохранена."
+            )
+            await self.bot.send_message(
+                telegram_id,
+                BACK_TO_MENU_TEXT,
+                reply_markup=main_menu()
+            )
+            logger.info(f"Session end notification sent to user {user_id}")
+        except Exception as e:
+            logger.error(f"Error sending session end notification: {e}")
