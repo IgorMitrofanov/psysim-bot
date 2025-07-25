@@ -11,6 +11,7 @@ def sync_get_response(messages, temperature, max_tokens):
         model=config.DEFAULT_MODEL,
         messages=messages,
         temperature=temperature,
+        max_tokens=max_tokens
     )
     reply = response.choices[0].message.content
     tokens = response.usage.total_tokens if response.usage else 0
@@ -50,7 +51,7 @@ async def call_llm_for_meta_ai(
             return response.strip(), tokens
             
         except Exception as e:
-            logger.error(f"[AI-decision system] LLM call error: {str(e)}", exc_info=True)
+            logger.error(f"[meta-AI-call] LLM call error: {str(e)}", exc_info=True)
             return "", 0
 
 async def get_response(messages, temperature=0.8, max_tokens=None):

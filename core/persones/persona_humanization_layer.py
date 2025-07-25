@@ -7,6 +7,7 @@ from config import logger
 from core.persones.llm_engine import call_llm_for_meta_ai
 from core.persones.prompt_builder import build_humalizate_prompt
 
+HUMANIZATION_LAYER_TEMP = 0.8
 
 class PersonaHumanizationLayer:
     def __init__(self, persona_data: Dict, resistance_level: str, emotional_state: str,):
@@ -38,19 +39,26 @@ class PersonaHumanizationLayer:
                     self.emotional_state
                 )
 
-                system_msg = "Ты эксперт по адаптации текста под стиль речи. Сохраняй смысл, меняй форму. Делай текст, в зависимости от портерета личности. Иногда можно писать с маленькой буквы и т д. Учитывай, какие языки знает персонаж. Можно разделять ответ через || для эффекта живой речи. Не делай много разделей слишком часто, чтобы разговор казался живым. Следи за историей сообщений, твои сообщения - assistant, терапевта - <Сообщение терапевта>"
+                system_msg = """
+                Ты эксперт по адаптации текста под стиль речи. Сохраняй смысл, меняй форму. 
+                Делай текст, в зависимости от портерета личности. Иногда можно писать с маленькой буквы и т д. 
+                Учитывай, какие языки знает персонаж. 
+                Можно разделять ответ через || для эффекта живой речи. 
+                Не делай много разделей слишком часто, чтобы разговор казался живым. 
+                Следи за историей сообщений.
+                """
+                # 25.07.2025 удалил "ты в переписке асистент, терапет - юзер." Давно не соответствует действительности, у нас есть "чистая" история для мета-ИИ
 
                 refined_response, tokens_used = await call_llm_for_meta_ai(
                     system_prompt=system_msg,
                     user_prompt=humanization_prompt,
-                    temperature=0.8
+                    temperature=HUMANIZATION_LAYER_TEMP
                 )
                 
-                # refined_response = refined_response.replace("`", "").replace("-", "")
-                logger.debug(f"[AI-decision system] Refined response: {refined_response[:200]}...")
+                logger.info(f"[AI-humanization-layer] Refined response: {refined_response}, tokens used: {tokens_used}")
                 
                 return refined_response.strip(), tokens_used
                 
             except Exception as e:
-                logger.error(f"[AI-decision system] Error refining response: {str(e)}", exc_info=True)
+                logger.error(f"[AI-humanization-layer] Error refining response: {str(e)}", exc_info=True)
                 return raw_response, 0

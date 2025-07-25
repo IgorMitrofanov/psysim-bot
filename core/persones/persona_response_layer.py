@@ -25,10 +25,11 @@ class PersonaResponseLayer:
                 )
         self.main_history = []
         self.main_history.insert(0, {"role": "system", "content": system_prompt})
-        logger.debug("Added system prompt to history")
+        logger.info("[AI-response-layer] Added system prompt to history")
 
     async def get_response(self):
         response, tokens_used = await get_response(self.main_history)
+        logger.info(f"[AI-response-layer] LLM response: {response}, tokens used: {tokens_used}")
         return response, tokens_used
         
     def update_history(self, msg, is_user=True):
@@ -36,3 +37,4 @@ class PersonaResponseLayer:
             self.main_history.append({"role": "user", "content": msg})
         else:
             self.main_history.append({"role": "assistant", "content": " ".join(msg)})
+        logger.info(f"[AI-response-layer] Main history updated, new history: {self.main_history}")

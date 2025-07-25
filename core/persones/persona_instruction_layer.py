@@ -5,7 +5,7 @@ from core.persones.llm_engine import get_response, call_llm_for_meta_ai
 from core.persones.prompt_builder import build_humalizate_prompt
 
 
-HUMANIZATION_TEMP = 0.8
+SALTER_LAYER_TEMP = 0.9
 
 class PersonaSalterLayer:
     def __init__(self, persona_data: Dict, resistance_level: str, emotional_state: str,):
@@ -69,11 +69,11 @@ class PersonaSalterLayer:
             """
             
             tokens = len(prompt) // 4 
-            logger.info(f"[AI-decision system] Salted message (dynamic basic): {prompt[:100]}...")
+            logger.info(f"[AI-salter-layer] Salted message: {prompt}, tokens used: {tokens}")
             return prompt, tokens
             
         except Exception as e:
-            logger.error(f"[AI-decision system] Error in salting message: {str(e)}", exc_info=True)
+            logger.error(f"[AI-salter-layer] Error in salting message: {str(e)}", exc_info=True)
             return user_message, 0
 
     async def _generate_salt_phrase(
@@ -139,10 +139,6 @@ class PersonaSalterLayer:
         - Поведенческие правила: {', '.join(self.persona_data.get('behaviour_rules', [])) if self.persona_data.get('behaviour_rules') else 'нет'}
         - Типичные самоотчеты: {', '.join(self.persona_data.get('self_reports', [])) if self.persona_data.get('self_reports') else 'нет'}
         - Триггеры: {', '.join(self.persona_data.get('triggers', [])) if self.persona_data.get('triggers') else 'нет'}
-        
-        # Внимание: в исторической переписке:
-        ##         - ASSISTANT - это пациент (персонаж, которому ты ассистируешь)
-        ##         - USER - это терапевт (собеседник пациента)
 
         История последних сообщений:
         {history_text}
@@ -158,7 +154,7 @@ class PersonaSalterLayer:
         response, _ = await call_llm_for_meta_ai(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            temperature=0.9
+            temperature=SALTER_LAYER_TEMP
         )
         
         return response

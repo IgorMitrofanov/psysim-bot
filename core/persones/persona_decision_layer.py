@@ -2,7 +2,7 @@ from typing import Dict, List, Tuple, Optional
 import logging
 
 from config import logger
-from core.persones.llm_engine import get_response
+from core.persones.llm_engine import call_llm_for_meta_ai
 
 VALID_DECISIONS = {
     'respond', 
@@ -14,6 +14,8 @@ VALID_DECISIONS = {
     'open_up'
 }
 
+DECISION_LAYER_TEMP = 1.2
+
 class PersonaDecisionLayer:
     """Мета слой принятия решений для психотерапевтического диалога.
     
@@ -23,7 +25,7 @@ class PersonaDecisionLayer:
     def __init__(self, persona_data: Dict, resistance_level: str, emotional_state: str,):
         """Инициализация сброшенного состояния."""
         self.reset()
-        self.max_decision_history = 20
+        self.max_decision_history = 30
         self.persona_data = persona_data
         self.resistance_level = resistance_level
         self.emotional_state = emotional_state
@@ -34,7 +36,7 @@ class PersonaDecisionLayer:
         self.persona_data = None
         self.resistance_level = None
         self.emotional_state = None
-        logger.debug("Decision layer state has been reset")
+        logger.debug("[AI-decision-layer] Decision layer state has been reset")
 
     async def make_decision(
         self,
@@ -82,7 +84,7 @@ class PersonaDecisionLayer:
         
         # Валидация решения
         if decision not in VALID_DECISIONS:
-            logger.warning(f"Invalid LLM decision: {decision}. Falling back to 'respond'")
+            logger.warning(f"[AI-decision-layer] Invalid LLM decision: {decision}. Falling back to 'respond'")
             return "respond"
             
         return decision
@@ -130,10 +132,10 @@ class PersonaDecisionLayer:
         """
         
         try:
-            response, tokens = await self._call_llm(
+            response, tokens = await self.call_llm_for_meta_ai(
                 system_prompt=system_prompt,
                 user_prompt=prompt,
-                temperature=1.2
+                temperature=DECISION_LAYER_TEMP
             )
             
             # Парсим ответ
@@ -144,20 +146,20 @@ class PersonaDecisionLayer:
                 decision = parts[1].strip().lower()
                 
                 # Логируем обоснование
-                logger.info(f"Decision reasoning: {reasoning}")
+                logger.info(f"[AI-decision-layer] Decision is {decision}, reasoning: {reasoning}, tokens used: {tokens}")
             else:
                 decision = response.strip().lower()
-                logger.debug("LLM response doesn't contain reasoning")
+                logger.warning(f"[AI-decision-layer] Decision is {decision}, but LLM response doesn't contain reasoning, tokens used: {tokens}")
             
             # Валидация решения
             if decision not in VALID_DECISIONS:
-                logger.warning(f"Invalid LLM decision: {decision}. Falling back to 'respond'")
+                logger.warning(f"[AI-decision-layer] Invalid LLM decision: {decision}. Falling back to 'respond', tokens used: {tokens}")
                 return "respond", tokens
                 
             return decision, tokens
             
         except Exception as e:
-            logger.error(f"Error processing LLM decision: {str(e)}", exc_info=True)
+            logger.error(f"[AI-decision-layer] Error processing LLM decision: {str(e)}", exc_info=True)
             return "respond", 0
 
     def _build_meta_prompt(
@@ -171,7 +173,6 @@ class PersonaDecisionLayer:
         """Строит детализированный промпт для принятия решения."""
         persona = persona_data.get('persona', {})
         
-        # Форматирование компонентов промпта
         components = {
             'history': self._format_history(history),
             'symptoms': self._format_symptoms(persona_data),
@@ -237,30 +238,3 @@ class PersonaDecisionLayer:
         if not self.recent_decisions:
             return "нет данных"
         return "\n".join(f"{i+1}. {d}" for i, d in enumerate(self.recent_decisions))
-
-    async def _call_llm(
-        self,
-        system_prompt: str,
-        user_prompt: str,
-        temperature: float = 0.7,
-        max_tokens: int = 150
-    ) -> Tuple[str, int]:
-        """Базовый метод взаимодействия с LLM."""
-        try:
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ]
-            
-            response, tokens = await get_response(
-                messages,
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
-            
-            logger.debug(f"LLM response: {response[:200]}... (tokens: {tokens})")
-            return response.strip(), tokens
-            
-        except Exception as e:
-            logger.error(f"LLM call error: {str(e)}", exc_info=True)
-            return "", 0
