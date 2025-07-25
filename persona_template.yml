@@ -18,14 +18,14 @@ trauma_history:
   -  # краткое описание ключевых травм (1–3)
 
 current_symptoms:
-  aggression:
-  hypervigilance:
-  flashbacks:
-  avoidance:
-  distrust:
-  sleep_disturbance:
-  irritability:
-  substance_use:
+  агрессия:
+  сверхбдительность:
+  флешбеки:
+  избегание:
+  разрушение:
+  нарушение_сна:
+  раздражительность:
+  употребление:
 
 personality_profile:
   attachment_style:

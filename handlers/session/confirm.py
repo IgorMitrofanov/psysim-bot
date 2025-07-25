@@ -29,13 +29,14 @@ from texts.session_texts import (
     CHOOSE_PERSONE_FOR_SESSION_TEXT,
     res_map,
     emo_map,
-    format_map
+    format_map,
+    SESSION_RESET_TEXT,
+    SESSION_RESET_ERROR_TEXT
 )
 from texts.common import BACK_TO_MENU_TEXT
 from services.session_manager import SessionManager
 
 router = Router(name="session_confirm")
-
 
 # --- Старт сессии ---
 @router.callback_query(lambda c: c.data == "main_start_session")

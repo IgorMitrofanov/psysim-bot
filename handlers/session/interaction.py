@@ -21,12 +21,9 @@ from uuid import uuid4
 
 router = Router(name="session_interaction")
 
-PROCESSING_DELAY = 10 # ожидание после последнего сообщения юзера, пеед тем как персона начнет формировать ответ
+PROCESSING_DELAY = 10 # ожидание после последнего сообщения юзера, перед тем как персона начнет формировать ответ
 
 INACTIVITY_DELAY = 120 # через сколько среагируем на молчание
-
-RESPONSE_DELAY = 180 # через сколько персона уйдет, после реакции на молчание
-
 
 # --- Улучшенное логирование ---
 def log_timer_operation(timer_name: str, operation: str, session_id: Optional[str] = None, user_id: Optional[int] = None):
@@ -83,6 +80,7 @@ async def session_lock(state: FSMContext):
     finally:
         await state.update_data(session_locked=False)
         logger.debug(f"[LOCK {lock_id}] RELEASED | session_id={session_id} | user_id={user_id}")
+
 
 class SafeTimer:
     """Безопасный таймер с логированием и обработкой ошибок"""
@@ -663,5 +661,5 @@ async def end_session_cleanup(
         except Exception as e:
             logger.error(f"Error during session cleanup: {e} | session_id={session_id} | user_id={user_id}")
             raise
-        finally:
-            await session.close()
+        # finally:
+        #     await session.close()

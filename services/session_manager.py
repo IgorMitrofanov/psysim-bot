@@ -138,45 +138,77 @@ class SessionManager:
         """Завершает сессию и сохраняет данные"""
         try:
             async with self.lock:
-                # Отправим юзеру сообщение об окончании сессии
-                await self.notify_session_end(user_id, db_session)
-                # Выставляем флаг окончания сессии
-                self.session_ended[user_id] = True
-                
-                
+                # Проверяем, не завершена ли уже сессия
+                if self.session_ended.get(user_id, False):
+                    return False
+                    
+                # Отправляем уведомление
+                try:
+                    await self.notify_session_end(user_id, db_session)
+                except Exception as e:
+                    logger.error(f"Error notifying session end: {e}")
+
+                # Получаем сессию с явным указанием на необходимость обновления
                 stmt = select(DBSession).where(
                     DBSession.id == session_id,
-                    DBSession.user_id == user_id,
-                    timeout=5.0
-                )
-                result = await db_session.execute(stmt)
-                session = result.scalar_one_or_none()
+                    DBSession.user_id == user_id
+                ).with_for_update()  # Блокируем запись для обновления
                 
-                if session:
+                try:
+                    result = await db_session.execute(stmt)
+                    session = result.scalar_one_or_none()
+                    
+                    if not session:
+                        logger.warning(f"Session {session_id} not found for user {user_id}")
+                        return False
+                        
+                    # Обновляем данные сессии
                     history = self.message_history.get(user_id, {})
-                    # тут сохраняются сообщения при завершении сесиии
                     session.ended_at = datetime.utcnow()
                     session.is_active = False
-                    session.user_messages = json.dumps(history.get('user_messages', []), ensure_ascii=False)
-                    session.bot_messages = json.dumps(history.get('bot_messages', []), ensure_ascii=False)
+                    
+                    try:
+                        session.user_messages = json.dumps(history.get('user_messages', []), ensure_ascii=False)
+                        session.bot_messages = json.dumps(history.get('bot_messages', []), ensure_ascii=False)
+                    except Exception as e:
+                        logger.error(f"Error serializing messages: {e}")
+                        # Сохраняем хотя бы информацию об ошибке
+                        session.user_messages = "[]"
+                        session.bot_messages = "[]"
+                    
                     session.tokens_spent = history.get('tokens_spent', 0)
                     
-                    await db_session.commit()
+                    try:
+                        await db_session.commit()
+                    except Exception as e:
+                        logger.error(f"Commit failed: {e}")
+                        await db_session.rollback()
+                        return False
                     
+                    # Очищаем данные только после успешного коммита
                     if user_id in self.message_history:
                         del self.message_history[user_id]
                     
+                    # Отменяем задачу проверки таймаута
                     if user_id in self.active_checks:
-                        self.active_checks[user_id].cancel()
+                        task = self.active_checks[user_id]
+                        task.cancel()
+                        try:
+                            await task
+                        except asyncio.CancelledError:
+                            pass
                         del self.active_checks[user_id]
                     
-                    logger.info(f"Session {session_id} ended for user {user_id}")
+                    logger.info(f"Session {session_id} successfully ended for user {user_id}")
                     return True
-                
-                logger.warning(f"No active session found for user {user_id} to end")
-                return False
+                    
+                except Exception as e:
+                    logger.error(f"Error updating session in DB: {e}")
+                    await db_session.rollback()
+                    return False
+                    
         except Exception as e:
-            logger.error(f"Error ending session: {e}")
+            logger.error(f"Unexpected error in end_session: {e}")
             return False
 
     async def add_message_to_history(self, user_id: int, message: str, is_user: bool, tokens_used: int):
