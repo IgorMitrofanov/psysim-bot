@@ -1,13 +1,12 @@
 import logging
 from aiogram import Router, types
 from aiogram.fsm.context import FSMContext
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from states import MainMenu
 from keyboards.builder import (
     cancel_feedback_keyboard, 
     back_to_main_keyboard,
-    help_detail_keyboard,
-    help_back_keyboard,
     feedback_menu
 )
 
@@ -22,7 +21,7 @@ from texts.feedback_texts import (
     CANCEL_FEEDBACK_POPUP
 )
 
-from texts.common import BACK_TO_MENU_TEXT
+from database.models import Feedback, FeedbackStatus, FeedbackType
 
 router = Router(name="feedback")
 
@@ -80,21 +79,51 @@ async def acknowledge_user_feedback(message: types.Message, state: FSMContext, s
     await state.set_state(MainMenu.choosing)
 
 @router.message(MainMenu.feedback)
-async def handle_feedback(message: types.Message, state: FSMContext):
+async def handle_feedback(message: types.Message, state: FSMContext, session: AsyncSession):
+    # Сохраняем отзыв в БД
+    feedback = Feedback(
+        user_id=message.from_user.id,
+        type=FeedbackType.FEEDBACK.value,
+        text=message.text,
+        status=FeedbackStatus.NEW.value
+    )
+    session.add(feedback)
+    await session.commit()
+    
     await acknowledge_user_feedback(
         message, state,
         THANK_YOU_FEEDBACK
     )
 
 @router.message(MainMenu.suggestion)
-async def handle_suggestion(message: types.Message, state: FSMContext):
+async def handle_suggestion(message: types.Message, state: FSMContext, session: AsyncSession):
+    # Сохраняем предложение в БД
+    feedback = Feedback(
+        user_id=message.from_user.id,
+        type=FeedbackType.SUGGESTION.value,
+        text=message.text,
+        status=FeedbackStatus.NEW.value
+    )
+    session.add(feedback)
+    await session.commit()
+    
     await acknowledge_user_feedback(
         message, state,
         THANK_YOU_SUGGESTION
     )
 
 @router.message(MainMenu.error_report)
-async def handle_error(message: types.Message, state: FSMContext):
+async def handle_error(message: types.Message, state: FSMContext, session: AsyncSession):
+    # Сохраняем баг-репорт в БД
+    feedback = Feedback(
+        user_id=message.from_user.id,
+        type=FeedbackType.BUG_REPORT.value,
+        text=message.text,
+        status=FeedbackStatus.NEW.value
+    )
+    session.add(feedback)
+    await session.commit()
+    
     await acknowledge_user_feedback(
         message, state,
         THANK_YOU_ERROR

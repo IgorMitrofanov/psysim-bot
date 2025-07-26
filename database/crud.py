@@ -4,6 +4,10 @@ from sqlalchemy.orm import selectinload
 from .models import User, Referral
 from sqlalchemy.exc import NoResultFound
 from database.models import Session
+from sqlalchemy import func
+from datetime import datetime
+import json
+
 
 async def get_user(session: AsyncSession, telegram_id: int) -> User | None:
     stmt = select(User).where(User.telegram_id == telegram_id)
@@ -28,9 +32,6 @@ async def get_user_by_referral_code(session: AsyncSession, code: str) -> User | 
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
 
-
-from sqlalchemy import func
-
 async def get_sessions_month_count(db_session: AsyncSession, user_id: int) -> int:
     """Возвращает количество сессий пользователя в текущем месяце."""
     now = datetime.utcnow()
@@ -44,15 +45,11 @@ async def get_sessions_month_count(db_session: AsyncSession, user_id: int) -> in
     count = count_query.scalar_one()
     return count or 0
 
-
 async def count_user_sessions(db: AsyncSession, user_id: int) -> int:
     result = await db.execute(
         select(func.count()).select_from(Session).where(Session.user_id == user_id)
     )
     return result.scalar_one()
-
-from datetime import datetime
-import json
 
 async def get_user_by_referral_code(session: AsyncSession, code: str) -> User | None:
     """Поиск пользователя по реферальному коду"""
@@ -68,42 +65,6 @@ async def get_user_referrals(session: AsyncSession, inviter_id: int):
     result = await session.execute(stmt)
     referrals = result.scalars().all()
     return referrals
-
-async def save_session(
-    session: AsyncSession,
-    user_id: int,
-    main_history: list[dict],
-    state_data: dict
-) -> bool:
-    """Сохраняет сессию в БД с полной информацией"""
-    session_id = state_data.get("session_id")
-    if not session_id:
-        return False
-
-    stmt = select(Session).where(
-        Session.id == session_id,
-        Session.user_id == user_id
-    )
-    result = await session.execute(stmt)
-    db_session = result.scalar_one_or_none()
-    
-    if not db_session:
-        return False
-    
-    # Сохраняем историю из persona
-    user_msgs = [msg['content'] for msg in main_history if msg['role'] == 'user']
-    bot_msgs = [msg['content'] for msg in main_history if msg['role'] == 'assistant']
-    
-    db_session.ended_at = datetime.utcnow()
-    db_session.is_active = False
-    db_session.user_messages = json.dumps(user_msgs, ensure_ascii=False)
-    db_session.bot_messages = json.dumps(bot_msgs, ensure_ascii=False)
-    db_session.emotional = state_data.get("emotion")
-    db_session.resistance_level = state_data.get("resistance")
-    db_session.is_free = state_data.get("is_trial", False)
-    
-    await session.commit()
-    return True
 
 async def create_user(
     session: AsyncSession,
@@ -126,39 +87,4 @@ async def create_user(
     session.add(user)
     await session.commit()
     return user
-
-
-async def add_bonus_to_user(session: AsyncSession, user_id: int, amount: int = 1):
-    user = await get_user_by_id(session, user_id)
-    if user:
-        user.bonus_balance += amount
-        await session.commit()
-
-
-async def has_user_paid(session: AsyncSession, user_id: int) -> bool:
-    # временный метод: считаем, что если у него не "trial", то оплатил
-    user = await get_user_by_id(session, user_id)
-    return user and user.active_tariff != "trial"
-
-
-async def get_or_create_referral_relation(session: AsyncSession, invited_id: int, inviter_id: int):
-    stmt = select(Referral).where(Referral.invited_user_id == invited_id)
-    result = await session.execute(stmt)
-    if result.scalar_one_or_none() is None:
-        referral = Referral(invited_user_id=invited_id, inviter_id=inviter_id)
-        session.add(referral)
-        await session.commit()
-
-async def add_balance_to_user(session: AsyncSession, user_id: int, amount: int = 1):
-    user = await get_user_by_id(session, user_id)
-    if user:
-        user.balance += amount
-        await session.commit()
-
-
-async def subtract_balance_from_user(session: AsyncSession, user_id: int, amount: int = 1):
-    user = await get_user_by_id(session, user_id)
-    if user and user.balance >= amount:
-        user.balance -= amount
-        await session.commit()
 

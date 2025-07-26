@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, T
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 import datetime
+from enum import Enum as PyEnum
 
 Base = declarative_base()
 
@@ -90,3 +91,38 @@ class Referral(Base):
 
     inviter = relationship("User", back_populates="referrals", foreign_keys=[inviter_id])
     invited_user = relationship("User", foreign_keys=[invited_user_id])
+
+class FeedbackType(PyEnum):
+    FEEDBACK = "feedback"
+    SUGGESTION = "suggestion"
+    BUG_REPORT = "bug_report"
+
+class FeedbackStatus(PyEnum):
+    NEW = "new"
+    REVIEWED = "reviewed"
+    PLANNED = "planned"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    REJECTED = "rejected"
+
+class Feedback(Base):
+    __tablename__ = "feedback"
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))  # Кто оставил отзыв
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    # Тип: feedback/suggestion/bug_report
+    type = Column(String, nullable=False)
+    text = Column(Text, nullable=False)  # Текст отзыва
+    
+    # Дополнительные поля для баг-репортов
+    error_details = Column(Text, nullable=True)  # Технические детали
+    reproduction_steps = Column(Text, nullable=True)  # Шаги воспроизведения
+    
+    # Статус обработки
+    status = Column(String, default=FeedbackStatus.NEW.value)
+    admin_notes = Column(Text, nullable=True)  # Заметки админов
+    
+    # Связи
+    user = relationship("User")
