@@ -6,15 +6,33 @@ from services.subscription_checker import check_subscriptions_expiry
 from config import config, DEFAULT_BOT_PROPERTIES, logger
 from database.models import Base
 from handlers import routers
+import ssl
 from middlewares.db import DBSessionMiddleware
 from services.session_manager import SessionManager
 
 async def init_db():
     logger.debug("database init")
-    engine = create_async_engine(config.DATABASE_URL)
+    
+    # Создаем SSL контекст для подключения
+    ssl_ctx = ssl.create_default_context(cafile="./ca.crt")
+    ssl_ctx.verify_mode = ssl.CERT_REQUIRED  # Аналог verify-full
+    
+    engine = create_async_engine(
+        config.DATABASE_URL,
+        connect_args={
+            "ssl": ssl_ctx
+        }
+    )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     return engine
+
+# Установка сертификата
+# mkdir -p ~/.cloud-certs && \
+# curl -o ~/.cloud-certs/root.crt "https://st.timeweb.com/cloud-static/ca.crt" && \
+# chmod 0600 ~/.cloud-certs/root.crt
+# export PGSSLROOTCERT=$HOME/.cloud-certs/root.crt
+
 
 async def main():
     engine = await init_db()
