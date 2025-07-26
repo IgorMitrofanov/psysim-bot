@@ -9,6 +9,7 @@ from keyboards.builder import (
     back_to_main_keyboard,
     feedback_menu
 )
+from database.crud import get_user
 
 from texts.feedback_texts import (
     FEEDBACK_MENU_TEXT,
@@ -80,9 +81,10 @@ async def acknowledge_user_feedback(message: types.Message, state: FSMContext, s
 
 @router.message(MainMenu.feedback)
 async def handle_feedback(message: types.Message, state: FSMContext, session: AsyncSession):
+    db_user = await get_user(session, telegram_id=message.from_user.id)
     # Сохраняем отзыв в БД
     feedback = Feedback(
-        user_id=message.from_user.id,
+        user_id=db_user.id,
         type=FeedbackType.FEEDBACK.value,
         text=message.text,
         status=FeedbackStatus.NEW.value
@@ -97,9 +99,10 @@ async def handle_feedback(message: types.Message, state: FSMContext, session: As
 
 @router.message(MainMenu.suggestion)
 async def handle_suggestion(message: types.Message, state: FSMContext, session: AsyncSession):
+    db_user = await get_user(session, telegram_id=message.from_user.id)
     # Сохраняем предложение в БД
     feedback = Feedback(
-        user_id=message.from_user.id,
+        user_id=db_user.id,
         type=FeedbackType.SUGGESTION.value,
         text=message.text,
         status=FeedbackStatus.NEW.value
@@ -114,9 +117,10 @@ async def handle_suggestion(message: types.Message, state: FSMContext, session: 
 
 @router.message(MainMenu.error_report)
 async def handle_error(message: types.Message, state: FSMContext, session: AsyncSession):
+    db_user = await get_user(session, telegram_id=message.from_user.id)
     # Сохраняем баг-репорт в БД
     feedback = Feedback(
-        user_id=message.from_user.id,
+        user_id=db_user.id,
         type=FeedbackType.BUG_REPORT.value,
         text=message.text,
         status=FeedbackStatus.NEW.value

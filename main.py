@@ -12,6 +12,17 @@ from services.session_manager import SessionManager
 from pathlib import Path
 import aiohttp
 
+from aiogram.types import BotCommand
+
+async def set_default_commands(bot: Bot):
+    commands = [
+        BotCommand(command="/start", description="Начать работу / перейти в главное меню"),
+    ]
+    await bot.set_my_commands(commands)
+    
+async def on_startup(bot: Bot):
+    await set_default_commands(bot)
+
 async def download_ssl_cert():
     cert_dir = Path.home() / ".cloud-certs"
     cert_path = cert_dir / "root.crt"
@@ -45,10 +56,10 @@ async def init_db():
     engine = create_async_engine(
         config.DATABASE_URL,
         connect_args={
-            # "ssl": ssl_ctx,
+            "ssl": ssl_ctx,
         },
-        # pool_pre_ping=True,  # Проверка соединения перед использованием
-        # echo=False,          # Логирование SQL запросов (False для продакшена)
+        pool_pre_ping=True,  # Проверка соединения перед использованием
+        echo=False,          # Логирование SQL запросов (False для продакшена)
     )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -69,7 +80,7 @@ async def main():
     sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
     dp.message.middleware(DBSessionMiddleware(sessionmaker))
     dp.callback_query.middleware(DBSessionMiddleware(sessionmaker))
-    
+    dp.startup.register(on_startup)
     # Фоновая задача по проверке подписок
     asyncio.create_task(check_subscriptions_expiry(bot, sessionmaker))
     # Инициализация менеджера сессий
