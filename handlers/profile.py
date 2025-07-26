@@ -1,12 +1,21 @@
-from aiogram import Router, types
+from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from sqlalchemy import select
 from database.crud import get_user, count_user_sessions
 from keyboards.builder import profile_keyboard, referral_keyboard
 from texts.common import profile_text, referral_text, referral_stats_text
 from config import logger
 from keyboards.builder import main_menu
+from database.models import Session
+from database.crud import get_user_sessions
+from keyboards.builder import profile_keyboard, sessions_keyboard, session_details_keyboard
+from texts.common import SESSIONS_LIST_TITLE, SESSION_DETAILS, NO_SESSIONS_TEXT
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from states import ProfileStates
+from sqlalchemy.exc import NoResultFound
+import json
+
 
 router = Router(name="profile")
 

@@ -11,3 +11,8 @@ class MainMenu(StatesGroup):
     session_persona = State()
     session_confirm = State()
     in_session = State()
+    
+    
+class ProfileStates(StatesGroup):
+    viewing_sessions = State()
+    viewing_session_details = State()

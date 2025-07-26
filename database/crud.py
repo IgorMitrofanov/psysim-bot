@@ -88,3 +88,11 @@ async def create_user(
     await session.commit()
     return user
 
+async def get_user_sessions(session: AsyncSession, user_id: int) -> list[Session]:
+    stmt = (
+        select(Session)
+        .where(Session.user_id == user_id)
+        .order_by(Session.started_at.desc())
+    )
+    result = await session.execute(stmt)
+    return result.scalars().all()

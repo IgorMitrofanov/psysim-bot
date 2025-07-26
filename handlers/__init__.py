@@ -8,6 +8,7 @@ from .referal import router as referal_router
 from .help import router as help_router
 from .subscription import router as sub_router
 from .not_implemented import router as not_implemented_router
+from .my_sessions import router as my_sessions_router
 
 routers = [
     not_implemented_router,
@@ -18,6 +19,7 @@ routers = [
     random_router,
     feedback_router,
     profile_router,
+    my_sessions_router,
     referal_router,
     help_router
 ]

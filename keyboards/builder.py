@@ -69,11 +69,16 @@ def profile_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="💰 Пополнить баланс", callback_data="not_implemented")],
         [InlineKeyboardButton(text="📦 Приобрести подписку", callback_data="buy")],
-        [InlineKeyboardButton(text="📊 Мои сессии и отчёты", callback_data="not_implemented")],
+        [InlineKeyboardButton(text="📊 Мои сессии и отчёты", callback_data="my_sessions")],
         [InlineKeyboardButton(text="🤝 Партнерская пограмма", callback_data="referral")],
         [InlineKeyboardButton(text="🎯 Мои цели", callback_data="not_implemented")],
         [InlineKeyboardButton(text="🏅 Мои достижения", callback_data="not_implemented")],
         [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_main")],
+    ])
+    
+def back_to_profile_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 Назад в профиль", callback_data="back_profile")]
     ])
 
 def referral_keyboard():
@@ -125,3 +130,67 @@ def persona_selection_menu(personas: list[str]) -> InlineKeyboardMarkup:
     ]
     buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_format")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def sessions_keyboard(sessions: list, page: int = 0, per_page: int = 5):
+    builder = InlineKeyboardBuilder()
+    
+    # Добавляем кнопки для каждой сессии
+    for session in sessions[page*per_page:(page+1)*per_page]:
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{session.persona_name or 'Без персонажа'} - {session.started_at.strftime('%d.%m %H:%M')}",
+                callback_data=f"session_detail_{session.id}"
+            )
+        )
+    
+    # Добавляем пагинацию
+    if len(sessions) > per_page:
+        if page > 0:
+            builder.row(
+                InlineKeyboardButton(text="⬅️ Назад", callback_data=f"sessions_page_{page-1}")
+            )
+        if (page+1)*per_page < len(sessions):
+            builder.row(
+                InlineKeyboardButton(text="Вперед ➡️", callback_data=f"sessions_page_{page+1}")
+            )
+    
+    builder.row(
+        InlineKeyboardButton(text="🔙 Назад", callback_data="back_profile")
+    )
+    
+    return builder.as_markup()
+
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+def session_details_keyboard(session_id: int):
+    builder = InlineKeyboardBuilder()
+    
+    builder.row(
+        InlineKeyboardButton(
+            text="📩 Мои сообщения",
+            callback_data=f"show_user_messages_{session_id}"
+        )
+    )
+    
+    builder.row(
+        InlineKeyboardButton(
+            text="🤖 Ответы бота",
+            callback_data=f"show_bot_messages_{session_id}"
+        )
+    )
+    
+    builder.row(
+        InlineKeyboardButton(
+            text="📄 Отчёт",
+            callback_data=f"show_report_{session_id}"
+        )
+    )
+    
+    builder.row(
+        InlineKeyboardButton(
+            text="🔙 Назад к списку",
+            callback_data="back_to_sessions_list"
+        )
+    )
+    
+    return builder.as_markup()

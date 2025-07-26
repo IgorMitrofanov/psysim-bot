@@ -45,10 +45,10 @@ async def init_db():
     engine = create_async_engine(
         config.DATABASE_URL,
         connect_args={
-            "ssl": ssl_ctx,
+            # "ssl": ssl_ctx,
         },
-        pool_pre_ping=True,  # Проверка соединения перед использованием
-        echo=False,          # Логирование SQL запросов (False для продакшена)
+        # pool_pre_ping=True,  # Проверка соединения перед использованием
+        # echo=False,          # Логирование SQL запросов (False для продакшена)
     )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
