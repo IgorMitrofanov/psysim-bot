@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Dict
 import asyncio
 from aiogram import Bot
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,16 +12,18 @@ from config import logger
 import json
 from config import config
 from asyncio import Lock
+from core.persones.persona_loader import PersonaLoader
 
 # --- Менеджер сессий ---
 # Осуществляет управление сессиями: начало, окончание, нотификация юзера, хранение данных сессии и их запись в БД
 class SessionManager:
-    def __init__(self, bot: Bot):
+    def __init__(self, bot: Bot, admin_engine):
         self.bot = bot            # Инстанс бот
         self.active_checks = {}   # Список активных сессий для таймера
         self.message_history = {} # История сообщений - юзера и персоны
         self.session_ended = {}   # Флаг окончания сессии для каждого пользователя
         self.lock = Lock()
+        self.persona_loader = PersonaLoader(admin_engine)
 
     async def start_session(
         self,
@@ -74,6 +76,12 @@ class SessionManager:
                    f"Expires at: {expires_at}")
         
         return db_sess.id
+    
+    async def get_persona(self, name: str) -> Optional[Dict]:
+        return await self.persona_loader.get_persona(name)
+    
+    async def get_all_personas(self) -> Dict[str, Dict]:
+        return await self.persona_loader.load_all_personas()
     
     async def _send_warning(self, user_id: int, session_id: int, db_session: AsyncSession):
         """Отправляет предупреждение за N минут до конца"""

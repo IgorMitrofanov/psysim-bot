@@ -15,7 +15,6 @@ from core.persones.persona_decision_layer import PersonaDecisionLayer
 from core.persones.persona_humanization_layer import PersonaHumanizationLayer
 from core.persones.persona_instruction_layer import PersonaSalterLayer
 from core.persones.persona_response_layer import PersonaResponseLayer
-from core.persones.persona_loader import load_personas
 from sqlalchemy.ext.asyncio import AsyncSession
 from database.crud import get_user
 from texts.session_texts import (
@@ -71,7 +70,7 @@ async def session_confirm_handler(
             # Подготовка к началу сессии
             data = await state.get_data()
             persona_name = data.get("persona_name")
-            personas = load_personas()
+            personas = await session_manager.get_all_personas()
             persona_data = personas.get(persona_name)
             if not persona_data:
                 await callback.message.edit_text("Персонаж не найден. Попробуйте снова.")
@@ -205,12 +204,12 @@ async def session_emotion_handler(callback: types.CallbackQuery, state: FSMConte
 # На самом деле думаю убрать это. Просто если риходит голосовая от пользователя - если тариф 
 # позволяет - обрабатываем, если нет, предалагем перейти на тариф где есть гс
 @router.callback_query(MainMenu.session_format)
-async def session_format_handler(callback: types.CallbackQuery, state: FSMContext):
+async def session_format_handler(callback: types.CallbackQuery, state: FSMContext, session_manager: SessionManager):
     await callback.answer()
     if callback.data in ["format_text", "format_audio"]:
         await state.update_data(format=callback.data)
 
-        personas = load_personas()
+        personas = await session_manager.get_all_personas()
         persona_names = list(personas.keys())
 
         await callback.message.edit_text(

@@ -55,7 +55,7 @@ class Session(Base):
     is_active = Column(Boolean, default=True)  # Флаг активности сессии
     
     is_free = Column(Boolean, default=False)
-    user_messages = Column(Text, nullable=True)  # Хранить всю переписку пользователя (например, JSON или просто текст)
+    user_messages = Column(Text, nullable=True)  # Хранить всю переписку пользователя (списки строк)
     bot_messages = Column(Text, nullable=True)   # Хранить все ответы бота
 
     report_text = Column(Text, nullable=True)  # Итоговый отчёт по сессии (если есть)
@@ -68,6 +68,8 @@ class Session(Base):
     persona_name = Column(String, nullable=True) 
 
     user = relationship("User", back_populates="sessions")
+    persona_id = Column(Integer, ForeignKey("personas.id"), nullable=True)
+    persona = relationship("Persona", back_populates="sessions")
 
 
 class Achievement(Base):
@@ -126,3 +128,44 @@ class Feedback(Base):
     
     # Связи
     user = relationship("User")
+    
+    
+#### ADMIN DB
+
+from sqlalchemy import JSON  # Add this import at the top
+
+class Persona(Base):
+    __tablename__ = "personas"
+    
+    id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True, index=True)
+    is_active = Column(Boolean, default=True)
+    
+    # Basic info
+    age = Column(Integer)
+    gender = Column(String, nullable=True)
+    profession = Column(String, nullable=True)
+    appearance = Column(String, nullable=True)
+    short_description = Column(String, nullable=True)
+    
+    # Psychological profile - use JSON for complex structures
+    background = Column(Text)
+    trauma_history = Column(JSON)  # Changed to JSON field
+    current_symptoms = Column(JSON)  # Changed to JSON field
+    goal_session = Column(Text)
+    tone = Column(JSON)  # Changed to JSON field
+    
+    # Behavior rules
+    behaviour_rules = Column(JSON)  # Changed to JSON field
+    interaction_guide = Column(JSON)  # Changed to JSON field
+    self_reports = Column(JSON)  # Changed to JSON field
+    
+    # Special considerations
+    escalation = Column(JSON)  # Changed to JSON field
+    triggers = Column(JSON)  # Changed to JSON field
+    
+    # Additional metadata
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, onupdate=datetime.datetime.utcnow)
+    
+    sessions = relationship("Session", back_populates="persona")

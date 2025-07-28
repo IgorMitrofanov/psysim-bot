@@ -1,33 +1,58 @@
-import os
-import yaml
-from typing import Dict, Any
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from database.models import Persona
+from typing import Dict, Optional
+import json
 
-PERSONAS_DIR = "persones" 
-
-def validate_persona(data: Dict[str, Any]) -> bool:
-    required_top_keys = {
-        "persona", "background", "trauma_history", "current_symptoms",
-        "goal_session", "tone", "behaviour_rules", "interaction_guide",
-        "self_reports", "escalation", "triggers"
-    }
-    if not all(k in data for k in required_top_keys):
-        return False
-    if "name" not in data["persona"] or "age" not in data["persona"]:
-        return False
-    return True
-
-def load_personas() -> Dict[str, Dict]:
-    personas = {}
-    if not os.path.exists(PERSONAS_DIR):
-        return personas
-    for filename in os.listdir(PERSONAS_DIR):
-        if filename.endswith(".yml") or filename.endswith(".yaml"):
-            path = os.path.join(PERSONAS_DIR, filename)
-            with open(path, encoding="utf-8") as f:
-                data = yaml.safe_load(f)
-                if validate_persona(data):
-                    key = data["persona"]["name"]
-                    personas[key] = data
-                else:
-                    print(f"Warning! Invalid persona format in {filename}")
-    return personas
+class PersonaLoader:
+    def __init__(self, admin_engine):
+        self.admin_engine = admin_engine
+        self._cached_personas = None
+    
+    async def load_all_personas(self) -> Dict[str, Dict]:
+        async with AsyncSession(self.admin_engine) as session:
+            result = await session.execute(select(Persona))
+            personas = result.scalars().all()
+            
+            personas_dict = {}
+            for persona in personas:
+                personas_dict[persona.name] = self._convert_to_legacy_format(persona)
+            
+            self._cached_personas = personas_dict
+            return personas_dict
+    
+    async def get_persona(self, name: str) -> Optional[Dict]:
+        if self._cached_personas and name in self._cached_personas:
+            return self._cached_personas[name]
+            
+        async with AsyncSession(self.admin_engine) as session:
+            result = await session.execute(
+                select(Persona).where(Persona.name == name)
+            )
+            persona = result.scalars().first()
+            if persona:
+                return self._convert_to_legacy_format(persona)
+            return None
+    
+    def _convert_to_legacy_format(self, persona: Persona) -> Dict:
+        """Convert database Persona object to legacy YAML format"""
+        return {
+            "persona": {
+                "name": persona.name,
+                "age": persona.age,
+                "gender": persona.gender,
+                "profession": persona.profession,
+                "appearance": persona.appearance,
+                "short_description": persona.short_description,
+            },
+            "background": persona.background,
+            "trauma_history": json.loads(persona.trauma_history) if persona.trauma_history else [],
+            "current_symptoms": json.loads(persona.current_symptoms) if persona.current_symptoms else {},
+            "goal_session": persona.goal_session,
+            "tone": json.loads(persona.tone) if persona.tone else {},
+            "behaviour_rules": json.loads(persona.behaviour_rules) if persona.behaviour_rules else [],
+            "interaction_guide": json.loads(persona.interaction_guide) if persona.interaction_guide else {},
+            "self_reports": json.loads(persona.self_reports) if persona.self_reports else [],
+            "escalation": json.loads(persona.escalation) if persona.escalation else [],
+            "triggers": json.loads(persona.triggers) if persona.triggers else [],
+        }
