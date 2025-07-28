@@ -10,7 +10,6 @@ load_dotenv()
 class Config:
     BOT_TOKEN = os.getenv("BOT_TOKEN")
     DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///bot_db.sqlite")
-    ADMIN_DATABASE_URL = os.getenv("ADMIN_DATABASE_URL", "sqlite+aiosqlite:///admin_db.sqlite")
     AI_API_KEY = os.getenv("AI_API_KEY")
     DEFAULT_MODEL = os.getenv("DEFAULT_MODEL")
     SESSION_LENGTH_MINUTES = os.getenv("SESSION_LENGTH_MINUTES")

@@ -11,7 +11,7 @@ PERSONAS_DIR = "persones"
 
 async def migrate_personas():
     # Initialize database engine
-    engine = create_async_engine(config.ADMIN_DATABASE_URL)
+    engine = create_async_engine(config.DATABASE_URL)
     
     # Create tables if they don't exist
     async with engine.begin() as conn:

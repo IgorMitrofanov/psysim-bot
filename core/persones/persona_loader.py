@@ -3,6 +3,7 @@ from sqlalchemy import select
 from database.models import Persona
 from typing import Dict, Optional
 import json
+from config import logger
 
 class PersonaLoader:
     def __init__(self, admin_engine):
@@ -17,8 +18,8 @@ class PersonaLoader:
             personas_dict = {}
             for persona in personas:
                 personas_dict[persona.name] = self._convert_to_legacy_format(persona)
-            
             self._cached_personas = personas_dict
+            logger.info(personas_dict)
             return personas_dict
     
     async def get_persona(self, name: str) -> Optional[Dict]:
