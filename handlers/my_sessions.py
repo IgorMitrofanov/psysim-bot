@@ -318,7 +318,7 @@ async def back_to_profile(callback: types.CallbackQuery, state: FSMContext, sess
         "tariff_expires": db_user.tariff_expires.strftime("%d.%m.%Y") if db_user.tariff_expires else "Не указано",
         "sessions_done": total_sessions,
         "bonus_balance": db_user.bonus_balance,
-        "balance": db_user.balance // 100, # баланс в копейках, переводим в рубли
+        "balance": db_user.balance / 100, # баланс в копейках, переводим в рубли
     }
 
     await callback.message.edit_text(

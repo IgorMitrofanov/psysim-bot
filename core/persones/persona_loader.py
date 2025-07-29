@@ -45,6 +45,7 @@ class PersonaLoader:
                 "profession": persona.profession,
                 "appearance": persona.appearance,
                 "short_description": persona.short_description,
+                "id": persona.id
             },
             "background": persona.background,
             "trauma_history": json.loads(persona.trauma_history) if persona.trauma_history else [],

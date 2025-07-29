@@ -88,6 +88,7 @@ async def activate_tariff_callback(
         user.active_tariff = tariff_enum
         user.tariff_expires = datetime.datetime.utcnow() + datetime.timedelta(days=tariff.duration_days)
         user.subscription_warning_sent = False  # Сбрасываем флаг предупреждения
+        user.last_activity = datetime.datetime.utcnow()  # Обновляем последнюю активность
 
         # Создаем запись о заказе
         order = Order(
@@ -109,7 +110,7 @@ async def activate_tariff_callback(
             f"✅ Подписка «{tariff.display_name}» активирована!\n"
             f"▸ Срок действия: {tariff.duration_days} дней\n"
             f"▸ Сессий доступно: {tariff.session_quota if tariff.session_quota < 999 else 'безлимит'}\n"
-            f"▸ Списано: {tariff.price // 100} ₽\n\n"
+            f"▸ Списано: {tariff.price / 100} ₽\n\n"
             f"Теперь вы можете начать новую сессию!"
         )
 

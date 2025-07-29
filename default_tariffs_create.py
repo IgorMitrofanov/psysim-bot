@@ -12,7 +12,7 @@ async def create_default_tariffs(session: AsyncSession):
             "display_name": "Пробный",
             "price": 0,
             "duration_days": 999,
-            "session_quota": 1,
+            "session_quota": 0,
             "quota_period_days": 30,
             "description": "Бесплатный базовый тариф с ограниченным функционалом"
         },

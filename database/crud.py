@@ -43,7 +43,7 @@ async def get_sessions_count_in_quota_period(
     result = await db_session.execute(
         select(func.count(Session.id))
         .where(Session.user_id == user_id)
-        .where(Session.created_at >= period_start)
+        .where(Session.started_at >= period_start)
     )
     
     return result.scalar() or 0

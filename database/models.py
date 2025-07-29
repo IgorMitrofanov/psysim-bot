@@ -25,6 +25,8 @@ class User(Base):
     is_premium = Column(Boolean, default=False)
     subscription_warning_sent = Column(Boolean, default=False)
     
+    last_activity = Column(DateTime, default=datetime.datetime.utcnow)  # Последняя активность пользователя
+    
     balance = Column(Integer, default=0)
 
     referred_by_id = Column(Integer, ForeignKey('users.id'), nullable=True)  # ID пригласившего
@@ -48,6 +50,7 @@ class Order(Base):
     status = Column(String, default="pending")
     external_id = Column(String, nullable=True) 
     tariff_id = Column(Integer, ForeignKey("tariffs.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     user = relationship("User", back_populates="orders")
     tariff = relationship("Tariff", back_populates="orders")
@@ -157,21 +160,21 @@ class Persona(Base):
     appearance = Column(String, nullable=True)
     short_description = Column(String, nullable=True)
     
-    # Psychological profile - use JSON for complex structures
+    # Background and history
     background = Column(Text)
-    trauma_history = Column(JSON)  # Changed to JSON field
-    current_symptoms = Column(JSON)  # Changed to JSON field
+    trauma_history = Column(Text) 
+    current_symptoms = Column(Text) 
     goal_session = Column(Text)
-    tone = Column(JSON)  # Changed to JSON field
+    tone = Column(Text)
     
     # Behavior rules
-    behaviour_rules = Column(JSON)  # Changed to JSON field
-    interaction_guide = Column(JSON)  # Changed to JSON field
-    self_reports = Column(JSON)  # Changed to JSON field
+    behaviour_rules = Column(Text) 
+    interaction_guide = Column(Text) 
+    self_reports = Column(Text)
     
     # Special considerations
-    escalation = Column(JSON)  # Changed to JSON field
-    triggers = Column(JSON)  # Changed to JSON field
+    escalation = Column(Text)  
+    triggers = Column(Text) 
     
     # Additional metadata
     created_at = Column(DateTime, default=datetime.datetime.utcnow)

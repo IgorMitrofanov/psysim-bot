@@ -39,7 +39,7 @@ ________________________________________
         # Форматируем описание тарифа
         tariff_block = f"""
 {icon} <b>{tariff.display_name}</b>
-• {f'{tariff.session_quota} сессий' if tariff.session_quota < 999 else 'безлимит сессий'} – {tariff.price // 100} ₽
+• {f'{tariff.session_quota} сессий' if tariff.session_quota < 999 else 'безлимит сессий'} – {tariff.price / 100} ₽
 """
         # Добавляем срок действия только если это не триал
         if "trial" not in tariff.name.value.lower():
@@ -79,7 +79,7 @@ async def get_tariff_success_text(tariff: Tariff) -> str:
     """Генерирует текст об успешной активации тарифа"""
     return (
         f"✅ Подписка «{tariff.display_name}» успешно активирована на {tariff.duration_days} дней.\n"
-        f"С вас списано {tariff.price // 100} ₽.\n\n"
+        f"С вас списано {tariff.price / 100} ₽.\n\n"
         f"Доступно сессий: {tariff.session_quota if tariff.session_quota < 999 else 'безлимит'}"
     )
 
