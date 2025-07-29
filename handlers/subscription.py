@@ -4,9 +4,12 @@ from database.crud import get_user
 from database.models import TariffType
 from keyboards.builder import subscription_keyboard
 from keyboards.builder import profile_keyboard
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker
+from database.models import Tariff
 from texts.subscription_texts import (
-    TARIFF_MENU_TEXT,
-    TARIFF_SUCCESS_TEMPLATE,
+    get_tariff_menu_text,
     TARIFF_FAIL_FUNDS,
     TARIFF_USER_NOT_FOUND,
     UNKNOWN_TARIFF
@@ -20,63 +23,109 @@ router = Router(name="subscription")
 
 
 @router.callback_query(lambda c: c.data == "buy")
-async def buy_tariff_menu(callback: types.CallbackQuery):
+async def buy_tariff_menu(callback: types.CallbackQuery, session: AsyncSession):
     await callback.message.edit_text(
-        TARIFF_MENU_TEXT,
-        reply_markup=subscription_keyboard(),
+        await get_tariff_menu_text(session),
+        reply_markup=await subscription_keyboard(session),
         parse_mode="HTML"
     )
 
 
 @router.callback_query(lambda c: c.data.startswith("activate_"))
-async def activate_tariff_callback(callback: types.CallbackQuery, session: AsyncSession, bot: Bot):
-     # callback.data: activate_start, activate_pro, activate_unlimited
-    key = callback.data.removeprefix("activate_")
-    if key not in config.TARIFF_MAP:
-        await callback.answer(UNKNOWN_TARIFF, show_alert=True)
-        return
-    
-    tariff_name, cost, days, _ = config.TARIFF_MAP[key]
-    
-    # Получаем соответствующий enum-объект
+async def activate_tariff_callback(
+    callback: types.CallbackQuery, 
+    session: AsyncSession, 
+    bot: Bot
+):
+    """Обработчик активации тарифа с проверками и уведомлениями"""
     try:
-        tariff_enum = TariffType[key.upper()]
-    except KeyError:
-        await callback.answer(UNKNOWN_TARIFF, show_alert=True)
-        return
+        # Получаем идентификатор тарифа из callback
+        tariff_key = callback.data.removeprefix("activate_")
+        
+        try:
+            # Преобразуем строку в Enum перед запросом к БД
+            tariff_enum = TariffType(tariff_key)
+        except ValueError:
+            logger.warning(f"Invalid tariff key: {tariff_key}")
+            await callback.answer(UNKNOWN_TARIFF, show_alert=True)
+            return
 
-    user = await get_user(session, telegram_id=callback.from_user.id)
-    if not user:
-        await callback.answer(TARIFF_USER_NOT_FOUND, show_alert=True)
-        return
+        # Получаем тариф из базы данных
+        tariff = await session.execute(
+            select(Tariff)
+            .where(Tariff.name == tariff_enum)  # Используем Enum для сравнения
+            .where(Tariff.is_active == True)
+        )
+        tariff = tariff.scalar_one_or_none()
+        
+        if not tariff:
+            logger.warning(f"Tariff not found: {tariff_key}")
+            await callback.answer(UNKNOWN_TARIFF, show_alert=True)
+            return
 
-    if user.balance < cost:
-        await callback.answer(TARIFF_FAIL_FUNDS, show_alert=True)
-        return
+        # Получаем пользователя
+        user = await get_user(session, telegram_id=callback.from_user.id)
+        if not user:
+            await callback.answer(TARIFF_USER_NOT_FOUND, show_alert=True)
+            return
 
-    # Списываем баланс и обновляем тариф
-    user.balance -= cost
-    user.active_tariff = tariff_enum  # Используем enum вместо строки
-    user.tariff_expires = datetime.datetime.utcnow() + datetime.timedelta(days=days)
+        # Проверяем баланс
+        if user.balance < tariff.price:
+            await callback.answer(TARIFF_FAIL_FUNDS, show_alert=True)
+            return
 
-    # Создаём запись о заказе
-    order_description = f"Покупка тарифа «{tariff_name}» на {days} дней"
-    order = Order(
-        user_id=user.id,
-        description=order_description,
-        price=cost,
-        date=datetime.datetime.utcnow()
-    )
-    session.add(order)
+        # Проверяем, не пытается ли пользователь купить тот же тариф
+        if user.active_tariff == tariff_enum and user.tariff_expires > datetime.utcnow():
+            days_left = (user.tariff_expires - datetime.utcnow()).days
+            await callback.answer(
+                f"У вас уже активен этот тариф! Осталось {days_left} дней",
+                show_alert=True
+            )
+            return
 
-    await process_referral_bonus_after_payment(session, user.id, bot)
+        # Обновляем данные пользователя
+        user.balance -= tariff.price
+        user.active_tariff = tariff_enum
+        user.tariff_expires = datetime.datetime.utcnow() + datetime.timedelta(days=tariff.duration_days)
+        user.subscription_warning_sent = False  # Сбрасываем флаг предупреждения
 
-    await session.commit()
+        # Создаем запись о заказе
+        order = Order(
+            user_id=user.id,
+            description=f"Покупка тарифа «{tariff.display_name}»",
+            price=tariff.price,
+            date=datetime.datetime.utcnow(),
+            tariff_id=tariff.id
+        )
+        session.add(order)
 
-    text = TARIFF_SUCCESS_TEMPLATE.format(tariff=tariff_name.capitalize(), days=days, cost=cost)
-    # Ответить в чат с профилем и клавиатурой профиля
-    await callback.message.edit_text(text, reply_markup=profile_keyboard())
-    await callback.answer()
+        # Начисляем реферальные бонусы
+        await process_referral_bonus_after_payment(session, user.id, bot)
+
+        await session.commit()
+
+        # Формируем сообщение об успехе
+        success_text = (
+            f"✅ Подписка «{tariff.display_name}» активирована!\n"
+            f"▸ Срок действия: {tariff.duration_days} дней\n"
+            f"▸ Сессий доступно: {tariff.session_quota if tariff.session_quota < 999 else 'безлимит'}\n"
+            f"▸ Списано: {tariff.price // 100} ₽\n\n"
+            f"Теперь вы можете начать новую сессию!"
+        )
+
+        await callback.message.edit_text(
+            success_text,
+            reply_markup=profile_keyboard()
+        )
+        await callback.answer()
+
+        # Логируем успешную покупку
+        logger.info(f"User {user.telegram_id} activated tariff {tariff.name}")
+
+    except Exception as e:
+        logger.error(f"Error activating tariff: {e}", exc_info=True)
+        await callback.answer("Произошла ошибка при обработке запроса", show_alert=True)
+        await session.rollback()
     
     
     

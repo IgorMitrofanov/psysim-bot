@@ -1,4 +1,8 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from database.models import Tariff, TariffType
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 def main_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -106,21 +110,69 @@ def back_to_main_keyboard():
         [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_main")]
     ])
     
-def subscription_keyboard():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🟢 Старт — 590 ₽ / 7 дней", callback_data="activate_start")],
-        [InlineKeyboardButton(text="🔵 Про — 1490 ₽ / 30 дней", callback_data="activate_pro")],
-        [InlineKeyboardButton(text="⚫ Безлимит — 2490 ₽ / 30 дней", callback_data="activate_unlimited")],
-        [InlineKeyboardButton(text="🔙 В профиль", callback_data="profile")],
-    ])
+async def subscription_keyboard(session: AsyncSession) -> InlineKeyboardMarkup:
+    """Генерирует клавиатуру с тарифами из БД"""
+    result = await session.execute(
+        select(Tariff)
+        .where(Tariff.is_active == True)
+        .where(Tariff.name.in_([TariffType.START, TariffType.PRO, TariffType.UNLIMITED]))
+        .order_by(Tariff.price)
+    )
+    tariffs = result.scalars().all()
+    
+    buttons = []
+    for tariff in tariffs:
+        price_rub = tariff.price / 100
+        days = tariff.duration_days
+        button_text = f"{tariff.display_name} — {price_rub:.0f} ₽ / {days} дней"
+        
+        # Добавляем иконки в зависимости от тарифа
+        if tariff.name == TariffType.START:
+            button_text = "🟢 " + button_text
+        elif tariff.name == TariffType.PRO:
+            button_text = "🔵 " + button_text
+        elif tariff.name == TariffType.UNLIMITED:
+            button_text = "⚫ " + button_text
+        
+        buttons.append(
+            [InlineKeyboardButton(text=button_text, callback_data=f"activate_{tariff.name.value}")]
+        )
+    
+    # Добавляем кнопку возврата
+    buttons.append([InlineKeyboardButton(text="🔙 В профиль", callback_data="profile")])
+    
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-def subscription_keyboard_when_sessions_left():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🟢 Старт — 590 ₽ / 7 дней", callback_data="activate_start")],
-        [InlineKeyboardButton(text="🔵 Про — 1490 ₽ / 30 дней", callback_data="activate_pro")],
-        [InlineKeyboardButton(text="⚫ Безлимит — 2490 ₽ / 30 дней", callback_data="activate_unlimited")],
-        [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_main")],
-    ])
+async def subscription_keyboard_when_sessions_left(session: AsyncSession) -> InlineKeyboardMarkup:
+    """Клавиатура при исчерпании сессий (без кнопки профиля)"""
+    result = await session.execute(
+        select(Tariff)
+        .where(Tariff.is_active == True)
+        .where(Tariff.name.in_([TariffType.START, TariffType.PRO, TariffType.UNLIMITED]))
+        .order_by(Tariff.price)
+    )
+    tariffs = result.scalars().all()
+    
+    buttons = []
+    for tariff in tariffs:
+        price_rub = tariff.price / 100
+        days = tariff.duration_days
+        button_text = f"{tariff.display_name} — {price_rub:.0f} ₽ / {days} дней"
+        
+        if tariff.name == TariffType.START:
+            button_text = "🟢 " + button_text
+        elif tariff.name == TariffType.PRO:
+            button_text = "🔵 " + button_text
+        elif tariff.name == TariffType.UNLIMITED:
+            button_text = "⚫ " + button_text
+        
+        buttons.append(
+            [InlineKeyboardButton(text=button_text, callback_data=f"activate_{tariff.name.value}")]
+        )
+    
+    buttons.append([InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_main")])
+    
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def persona_selection_menu(personas: list[str]) -> InlineKeyboardMarkup:

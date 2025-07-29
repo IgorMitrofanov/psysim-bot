@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta
-from typing import Optional, Dict
+from typing import Optional, Dict, Tuple
 import asyncio
 from aiogram import Bot
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from database.models import Session as DBSession
-from database.crud import get_sessions_month_count, get_user_by_id, get_telegram_id_by_user_id
+from database.models import Tariff
+from database.crud import get_sessions_count_in_quota_period, get_user_by_id, get_telegram_id_by_user_id
 from keyboards.builder import main_menu
 from texts.common import BACK_TO_MENU_TEXT
 from config import logger 
@@ -275,28 +276,53 @@ class SessionManager:
         self.message_history.clear()
         self.session_ended.clear()
         
-    async def use_session_quota_or_bonus(self, db_session: AsyncSession, user_id) -> tuple[bool, bool]:
+    async def use_session_quota_or_bonus(
+        db_session: AsyncSession, 
+        user_id: int
+    ) -> Tuple[bool, bool, Optional[int]]:
         """
-        Пытается использовать квоту или бонус:
-        - Возвращает (True, False) если сессия списана из квоты
-        - Возвращает (True, True) если сессия списана из бонусов
-        - Возвращает (False, False) если ресурсов нет
+        Проверяет и использует квоту или бонус.
+        Возвращает:
+        - (True, False, остаток_квоты) если использована квота
+        - (True, True, None) если использован бонус
+        - (False, False, None) если нет ресурсов
         """
+        # Получаем пользователя и его тариф
         user = await get_user_by_id(db_session, user_id)
-        quota = config.TARIFF_QUOTAS.get(user.active_tariff, 0)
-        sessions_this_month = await get_sessions_month_count(db_session, user.id)
-
-        if sessions_this_month < quota:
-            # Использована квота
-            return True, False
-        elif user.bonus_balance > 0:
-            # Использован бонус
+        if not user:
+            return False, False, None
+        
+        tariff = await db_session.execute(
+            select(Tariff).where(Tariff.name == user.active_tariff)
+        )
+        tariff = tariff.scalar_one_or_none()
+        
+        if not tariff:
+            return False, False, None
+        
+        # Определяем период квоты (может быть любым, не только 30 дней)
+        quota_period_days = tariff.quota_period_days if hasattr(tariff, 'quota_period_days') else 30
+        
+        # Получаем количество сессий в текущем периоде квоты
+        sessions_in_period = await get_sessions_count_in_quota_period(
+            db_session,
+            user_id=user.id,
+            period_days=quota_period_days
+        )
+        
+        # Проверяем доступность квоты
+        quota_left = tariff.session_quota - sessions_in_period
+        
+        if quota_left > 0:
+            return True, False, quota_left - 1  # -1 для текущей сессии
+        
+        # Проверяем бонусный баланс
+        if user.bonus_balance > 0:
             user.bonus_balance -= 1
             await db_session.commit()
-            return True, True
-        else:
-            # Ресурсов нет
-            return False, False
+            return True, True, None
+    
+        return False, False, None
         
     async def notify_session_end(self, user_id: int, db_session: AsyncSession):
         """Уведомляет пользователя об окончании сессии"""

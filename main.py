@@ -74,8 +74,14 @@ async def init_db():
 
 async def main():
     engine = await init_db()
+    # Добавляем дефолные тарифы если их нет обновление 0.0.0p+
+    from default_tariffs_create import create_default_tariffs
+    async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+        await create_default_tariffs(session)
+        
     bot = Bot(token=config.BOT_TOKEN, default=DEFAULT_BOT_PROPERTIES)  
     dp = Dispatcher(storage=MemoryStorage()) # заменить на реддис например
+
     
     # Запускаем миграцию персонажей перед стартом бота # обновлние 0.0.0p
     from migrate_personas import migrate_personas

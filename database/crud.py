@@ -5,7 +5,7 @@ from .models import User, Referral
 from sqlalchemy.exc import NoResultFound
 from database.models import Session
 from sqlalchemy import func
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 
 
@@ -32,18 +32,21 @@ async def get_user_by_referral_code(session: AsyncSession, code: str) -> User | 
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
 
-async def get_sessions_month_count(db_session: AsyncSession, user_id: int) -> int:
-    """Возвращает количество сессий пользователя в текущем месяце."""
-    now = datetime.utcnow()
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    count_query = await db_session.execute(
-        select(func.count(Session.id)).where(
-            Session.user_id == user_id,
-            Session.started_at >= month_start
-        )
+async def get_sessions_count_in_quota_period(
+    db_session: AsyncSession,
+    user_id: int,
+    period_days: int
+) -> int:
+    """Возвращает количество сессий пользователя за указанный период"""
+    period_start = datetime.utcnow() - timedelta(days=period_days)
+    
+    result = await db_session.execute(
+        select(func.count(Session.id))
+        .where(Session.user_id == user_id)
+        .where(Session.created_at >= period_start)
     )
-    count = count_query.scalar_one()
-    return count or 0
+    
+    return result.scalar() or 0
 
 async def count_user_sessions(db: AsyncSession, user_id: int) -> int:
     result = await db.execute(

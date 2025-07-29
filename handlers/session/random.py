@@ -42,7 +42,7 @@ async def random_session_handler(
     if not used:
         await callback.message.edit_text(
             NO_QUOTA_OR_BONUS_FOR_SESSION,
-            reply_markup=subscription_keyboard_when_sessions_left()
+            reply_markup=await subscription_keyboard_when_sessions_left(session)
         )
         return
     # Загрузка списка персонажей

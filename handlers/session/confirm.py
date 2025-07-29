@@ -110,7 +110,7 @@ async def session_confirm_handler(
                 # Предлагаем купить, если нет ресурсов на сессию
                 await callback.message.answer(
                     NO_QUOTA_OR_BONUS_FOR_SESSION,
-                    reply_markup=subscription_keyboard_when_sessions_left()
+                    reply_markup=await subscription_keyboard_when_sessions_left(session)
                 )
                 return
             

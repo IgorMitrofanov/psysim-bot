@@ -23,6 +23,7 @@ class User(Base):
     tariff_expires = Column(DateTime)
     language_code = Column(String, nullable=True)
     is_premium = Column(Boolean, default=False)
+    subscription_warning_sent = Column(Boolean, default=False)
     
     balance = Column(Integer, default=0)
 
@@ -46,8 +47,10 @@ class Order(Base):
     price = Column(Integer)
     status = Column(String, default="pending")
     external_id = Column(String, nullable=True) 
+    tariff_id = Column(Integer, ForeignKey("tariffs.id"), nullable=True)
 
     user = relationship("User", back_populates="orders")
+    tariff = relationship("Tariff", back_populates="orders")
 
 
 class Session(Base):
@@ -176,6 +179,23 @@ class Persona(Base):
     
     sessions = relationship("Session", back_populates="persona")
     
+    
+class Tariff(Base):
+    __tablename__ = "tariffs"
+    
+    id = Column(Integer, primary_key=True)
+    name = Column(Enum(TariffType), unique=True, nullable=False)
+    display_name = Column(String, nullable=False)
+    price = Column(Integer, nullable=False)  # в копейках
+    duration_days = Column(Integer, nullable=False)  # Длительность действия тарифа
+    session_quota = Column(Integer, nullable=False)  # Количество доступных сессий на квоту
+    quota_period_days = Column(Integer, default=30)  # Период квоты в днях
+    description = Column(String)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, onupdate=datetime.datetime.utcnow)
+    
+    orders = relationship("Order", back_populates="tariff")  # Add this line
 
 class AdminAuthCode(Base):
     __tablename__ = "admin_auth_codes"
