@@ -91,7 +91,12 @@ async def handle_get_admin_code(message, session: AsyncSession):
     await session.commit()
     
     # Отправляем код пользователю
-    await message.answer(f"Ваш код для входа в админ-панель: {code}\nДействителен 1 час.")
+    await message.answer(
+        f"🔑 Ваш код для входа в админ-панель: <code>{code}</code>\n"
+        f"⏳ Действителен до: {expires_at.strftime('%Y-%m-%d %H:%M')}\n\n"
+        "Используйте его на странице входа в админ-панель.",
+        parse_mode="Markdown"
+    )
 
 @router.callback_query(lambda c: c.data == "back_main")
 async def back_to_main_handler(callback: types.CallbackQuery, state: FSMContext):
