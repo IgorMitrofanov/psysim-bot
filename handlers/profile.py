@@ -33,7 +33,7 @@ async def profile_handler(callback: types.CallbackQuery, state: FSMContext, sess
         "registered_at": db_user.registered_at.strftime("%d.%m.%Y"),
         "active_tariff": (
             "Подписка не оформлена" if db_user.active_tariff.value == "trial"
-            else f"Подписка «{db_user.active_tariff}»"
+            else f"Подписка «{db_user.active_tariff.value}»"
         ),
         "tariff_expires": db_user.tariff_expires.strftime("%d.%m.%Y") if db_user.tariff_expires else "Не указано",
         "sessions_done": total_sessions,

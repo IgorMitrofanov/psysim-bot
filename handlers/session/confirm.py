@@ -118,10 +118,10 @@ async def session_confirm_handler(
             session_id = await session_manager.start_session(
                 db_session=session,
                 user_id=db_user.id,
-                is_free=db_user.active_tariff == "trial",
+                is_free=db_user.active_tariff.value == "trial",
                 persona_name=persona_name,
-                resistance=emotion,
-                emotion=resistance
+                resistance=resistance,
+                emotion=emotion
             )
             # Обновляем данные в стейт
             await state.update_data(

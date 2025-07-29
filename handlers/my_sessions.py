@@ -312,8 +312,8 @@ async def back_to_profile(callback: types.CallbackQuery, state: FSMContext, sess
         "telegram_id": db_user.telegram_id,
         "registered_at": db_user.registered_at.strftime("%d.%m.%Y"),
         "active_tariff": (
-            "Подписка не оформлена" if db_user.active_tariff == "trial"
-            else f"Подписка «{db_user.active_tariff}»"
+            "Подписка не оформлена" if db_user.active_tariff.value == "trial"
+            else f"Подписка «{db_user.active_tariff.value}»"
         ),
         "tariff_expires": db_user.tariff_expires.strftime("%d.%m.%Y") if db_user.tariff_expires else "Не указано",
         "sessions_done": total_sessions,
