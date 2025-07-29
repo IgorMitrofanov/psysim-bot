@@ -1,6 +1,7 @@
 from aiogram import Router, types, Bot
 from sqlalchemy.ext.asyncio import AsyncSession
 from database.crud import get_user
+from database.models import TariffType
 from keyboards.builder import subscription_keyboard
 from keyboards.builder import profile_keyboard
 from texts.subscription_texts import (
@@ -29,13 +30,21 @@ async def buy_tariff_menu(callback: types.CallbackQuery):
 
 @router.callback_query(lambda c: c.data.startswith("activate_"))
 async def activate_tariff_callback(callback: types.CallbackQuery, session: AsyncSession, bot: Bot):
-    # callback.data: activate_start, activate_pro, activate_unlimited
+     # callback.data: activate_start, activate_pro, activate_unlimited
     key = callback.data.removeprefix("activate_")
     if key not in config.TARIFF_MAP:
         await callback.answer(UNKNOWN_TARIFF, show_alert=True)
         return
     
     tariff_name, cost, days, _ = config.TARIFF_MAP[key]
+    
+    # Получаем соответствующий enum-объект
+    try:
+        tariff_enum = TariffType[key.upper()]
+    except KeyError:
+        await callback.answer(UNKNOWN_TARIFF, show_alert=True)
+        return
+
     user = await get_user(session, telegram_id=callback.from_user.id)
     if not user:
         await callback.answer(TARIFF_USER_NOT_FOUND, show_alert=True)
@@ -47,7 +56,7 @@ async def activate_tariff_callback(callback: types.CallbackQuery, session: Async
 
     # Списываем баланс и обновляем тариф
     user.balance -= cost
-    user.active_tariff = tariff_name.lower()
+    user.active_tariff = tariff_enum  # Используем enum вместо строки
     user.tariff_expires = datetime.datetime.utcnow() + datetime.timedelta(days=days)
 
     # Создаём запись о заказе
@@ -62,13 +71,12 @@ async def activate_tariff_callback(callback: types.CallbackQuery, session: Async
 
     await process_referral_bonus_after_payment(session, user.id, bot)
 
-
     await session.commit()
 
     text = TARIFF_SUCCESS_TEMPLATE.format(tariff=tariff_name.capitalize(), days=days, cost=cost)
     # Ответить в чат с профилем и клавиатурой профиля
     await callback.message.edit_text(text, reply_markup=profile_keyboard())
-    await callback.answer() 
+    await callback.answer()
     
     
     

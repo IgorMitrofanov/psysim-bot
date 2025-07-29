@@ -6,6 +6,12 @@ from enum import Enum as PyEnum
 
 Base = declarative_base()
 
+class TariffType(PyEnum):
+    TRIAL = "trial"
+    START = "start"
+    PRO = "pro"
+    UNLIMITED = "unlimited"
+
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
@@ -13,7 +19,7 @@ class User(Base):
     username = Column(String)
     registered_at = Column(DateTime, default=datetime.datetime.utcnow)
     is_new = Column(Boolean, default=True)
-    active_tariff = Column(String, default="trial")
+    active_tariff = Column(Enum(TariffType), default=TariffType.TRIAL)
     tariff_expires = Column(DateTime)
     language_code = Column(String, nullable=True)
     is_premium = Column(Boolean, default=False)
@@ -29,8 +35,7 @@ class User(Base):
     sessions = relationship("Session", back_populates="user")
     achievements = relationship("Achievement", back_populates="user")
     referrals = relationship("Referral", back_populates="inviter", foreign_keys='Referral.inviter_id')
-
-
+    
 class Order(Base):
     __tablename__ = "orders"
     id = Column(Integer, primary_key=True)
@@ -63,7 +68,7 @@ class Session(Base):
     
     is_rnd = Column(Boolean, default=False) # Для отслеживания случайная сессия или нет, думаю для ачивок и статистики пригодиться
 
-    emotional = Column(String, nullable=True)  # Вместо "emotial" — исправил опечатку
+    emotional = Column(String, nullable=True) 
     resistance_level = Column(String, nullable=True)  # "средний", "высокий"
     persona_name = Column(String, nullable=True) 
 
@@ -170,42 +175,17 @@ class Persona(Base):
     
     sessions = relationship("Session", back_populates="persona")
     
-    
-class AdminRole(PyEnum):
-    """Роли администраторов с разными уровнями доступа"""
-    SUPERADMIN = "superadmin"  # Полный доступ ко всему
-    CONTENT_MANAGER = "content_manager"  # Управление контентом (персонажи)
-    SUPPORT = "support"  # Доступ к обратной связи и сессиям
-    ANALYST = "analyst"  # Только просмотр статистики
 
 class Admin(Base):
     __tablename__ = "admins"
     
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=True)  # Связь с обычным пользователем (если есть)
     username = Column(String, unique=True)  # Логин администратора
     email = Column(String, unique=True, nullable=True)  # Для уведомлений
     hashed_password = Column(String)  # Хэшированный пароль
-    role = Column(String, default=AdminRole.SUPPORT.value)  # Роль/уровень доступа
-    is_active = Column(Boolean, default=True)  # Активен ли аккаунт
     last_login = Column(DateTime, nullable=True)  # Последний вход
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, onupdate=datetime.datetime.utcnow)
     
-    # Дополнительные поля для безопасности
     failed_login_attempts = Column(Integer, default=0)  # Неудачные попытки входа
     password_changed_at = Column(DateTime, nullable=True)  # Когда последний раз меняли пароль
-    
-    # Связи
-    user = relationship("User")  # Связь с обычным пользователем (если есть)
-    
-    # Методы для проверки прав
-    def has_permission(self, required_role: AdminRole) -> bool:
-        """Проверяет, есть ли у админа достаточные права"""
-        role_hierarchy = {
-            AdminRole.SUPERADMIN: 4,
-            AdminRole.CONTENT_MANAGER: 3,
-            AdminRole.SUPPORT: 2,
-            AdminRole.ANALYST: 1
-        }
-        return role_hierarchy.get(AdminRole(self.role), 0) >= role_hierarchy.get(required_role, 0)

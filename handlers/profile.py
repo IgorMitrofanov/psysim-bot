@@ -15,7 +15,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from states import ProfileStates
 from sqlalchemy.exc import NoResultFound
 import json
-
+from database.models import TariffType
 
 router = Router(name="profile")
 
@@ -32,7 +32,7 @@ async def profile_handler(callback: types.CallbackQuery, state: FSMContext, sess
         "telegram_id": db_user.telegram_id,
         "registered_at": db_user.registered_at.strftime("%d.%m.%Y"),
         "active_tariff": (
-            "Подписка не оформлена" if db_user.active_tariff == "trial"
+            "Подписка не оформлена" if db_user.active_tariff.value == "trial"
             else f"Подписка «{db_user.active_tariff}»"
         ),
         "tariff_expires": db_user.tariff_expires.strftime("%d.%m.%Y") if db_user.tariff_expires else "Не указано",

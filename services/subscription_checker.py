@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime
 from sqlalchemy import select
-from database.models import User
+from database.models import User, TariffType
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from aiogram import Bot
 from config import logger
@@ -16,14 +16,14 @@ async def check_subscriptions_expiry(bot: Bot, db_session_factory: async_session
     while True:
         try:
             async with db_session_factory() as session:
-                stmt = select(User).where(User.active_tariff.isnot(None))
+                stmt = select(User).where(User.active_tariff != TariffType.TRIAL)
                 result = await session.execute(stmt)
-                users = result.scalars().all()
+                users: User = result.scalars().all()
 
                 for user in users:
                     if user.tariff_expires and user.tariff_expires < datetime.utcnow():
                         logger.info(f"[SUBSCRIPTION] Subscription has expired: user {user.telegram_id}")
-                        user.active_tariff = None
+                        user.active_tariff = TariffType.TRIAL
                         user.tariff_expires = None
                         await session.commit()
 
