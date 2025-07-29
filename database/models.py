@@ -35,6 +35,7 @@ class User(Base):
     sessions = relationship("Session", back_populates="user")
     achievements = relationship("Achievement", back_populates="user")
     referrals = relationship("Referral", back_populates="inviter", foreign_keys='Referral.inviter_id')
+    admin = relationship("Admin", back_populates="user", uselist=False)
     
 class Order(Base):
     __tablename__ = "orders"
@@ -176,16 +177,25 @@ class Persona(Base):
     sessions = relationship("Session", back_populates="persona")
     
 
+class AdminAuthCode(Base):
+    __tablename__ = "admin_auth_codes"
+    
+    id = Column(Integer, primary_key=True)
+    code = Column(String, unique=True, index=True)  # Сам код (например, 6-значный)
+    admin_user_id = Column(Integer, ForeignKey('users.id'), nullable=False)  # ID админа
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    expires_at = Column(DateTime)  # Время истечения (created_at + 1 час)
+    is_used = Column(Boolean, default=False)
+    
+    # Связь с пользователем
+    admin_user = relationship("User")
+
 class Admin(Base):
     __tablename__ = "admins"
     
     id = Column(Integer, primary_key=True)
-    username = Column(String, unique=True)  # Логин администратора
-    email = Column(String, unique=True, nullable=True)  # Для уведомлений
-    hashed_password = Column(String)  # Хэшированный пароль
-    last_login = Column(DateTime, nullable=True)  # Последний вход
+    user_id = Column(Integer, ForeignKey('users.id'), unique=True, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    updated_at = Column(DateTime, onupdate=datetime.datetime.utcnow)
     
-    failed_login_attempts = Column(Integer, default=0)  # Неудачные попытки входа
-    password_changed_at = Column(DateTime, nullable=True)  # Когда последний раз меняли пароль
+    # Связь с пользователем
+    user = relationship("User", back_populates="admin", uselist=False)

@@ -3,6 +3,10 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
 from database.crud import get_user
+from database.models import User, Admin, AdminAuthCode
+import random
+from sqlalchemy.future import select
+
 from keyboards.builder import main_menu
 from states import MainMenu
 from texts.common import get_start_text, BACK_TO_MENU_TEXT
@@ -12,6 +16,8 @@ from services.referral_manager import (
     create_new_user_with_referral,
     handle_referral_bonus
 )
+import datetime
+
 
 router = Router(name="common")
 
@@ -59,6 +65,33 @@ async def cmd_start(message: types.Message, state: FSMContext, session: AsyncSes
     finally:
         await session.close()
 
+
+@router.message(Command('get_admin_code'))
+async def handle_get_admin_code(message, session: AsyncSession):
+    admin = await session.execute(
+        select(Admin).join(User).where(User.telegram_id == message.from_user.id)
+    )
+    admin = admin.scalar_one_or_none()
+    
+    if not admin:
+        await message.answer("У вас нет прав администратора")
+        return
+    
+    # Генерируем случайный 6-значный код
+    code = ''.join(random.choices('0123456789', k=6))
+    expires_at = datetime.datetime.utcnow() + datetime.timedelta(hours=1)
+    
+    # Сохраняем код в БД
+    auth_code = AdminAuthCode(
+        code=code,
+        admin_user_id=admin.user_id,  # Используем user_id из таблицы admins
+        expires_at=expires_at
+    )
+    session.add(auth_code)
+    await session.commit()
+    
+    # Отправляем код пользователю
+    await message.answer(f"Ваш код для входа в админ-панель: {code}\nДействителен 1 час.")
 
 @router.callback_query(lambda c: c.data == "back_main")
 async def back_to_main_handler(callback: types.CallbackQuery, state: FSMContext):
