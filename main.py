@@ -96,7 +96,7 @@ async def main():
     # Фоновая задача по проверке подписок
     asyncio.create_task(check_subscriptions_expiry(bot, sessionmaker))
     # Инициализация менеджера сессий
-    session_manager = SessionManager(bot, admin_engine=engine)
+    session_manager = SessionManager(bot, engine=engine)
     dp['session_manager'] = session_manager
     
     

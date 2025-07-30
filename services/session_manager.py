@@ -14,18 +14,18 @@ import json
 from config import config
 from asyncio import Lock
 from core.persones.persona_loader import PersonaLoader
-
+from core.reports.supervision_report_builder import SupervisionReportBuilder
 
 # --- Менеджер сессий ---
 # Осуществляет управление сессиями: начало, окончание, нотификация юзера, хранение данных сессии и их запись в БД
 class SessionManager:
-    def __init__(self, bot: Bot, admin_engine):
+    def __init__(self, bot: Bot, engine):
         self.bot = bot            # Инстанс бот
         self.active_checks = {}   # Список активных сессий для таймера
         self.message_history = {} # История сообщений - юзера и персоны
         self.session_ended = {}   # Флаг окончания сессии для каждого пользователя
         self.lock = Lock()
-        self.persona_loader = PersonaLoader(admin_engine)
+        self.persona_loader = PersonaLoader(engine)
 
     async def start_session(
         self,
@@ -157,12 +157,6 @@ class SessionManager:
                 # Проверяем, не завершена ли уже сессия
                 if self.session_ended.get(user_id, False):
                     return False
-                    
-                # Отправляем уведомление
-                try:
-                    await self.notify_session_end(user_id, db_session)
-                except Exception as e:
-                    logger.error(f"Error notifying session end: {e}")
 
                 # Получаем сессию с явным указанием на необходимость обновления
                 stmt = select(DBSession).where(
@@ -177,12 +171,63 @@ class SessionManager:
                     if not session:
                         logger.warning(f"Session {session_id} not found for user {user_id}")
                         return False
+                    
+                    # Подготовка данных для отчета
+                    history = self.message_history.get(user_id, {})
+                    user_messages = history.get('user_messages', [])
+                    bot_messages = history.get('bot_messages', [])
+                    
+                    # Собираем историю сессии для отчета
+                    session_history = []
+                    for user_msg, bot_msg in zip(user_messages, bot_messages):
+                        session_history.append({"role": "Терапевт", "content": user_msg})
+                        session_history.append({"role": "Пациент", "content": bot_msg})
+                    
+                    # Генерируем отчет, если есть имя персоны
+                    report_text = None
+                    report_tokens = 0
+                    telegram_id = await get_telegram_id_by_user_id(db_session, user_id)
+                    await self.bot.send_message(
+                                telegram_id,
+                                "<i>Генерация супервизорского отчета по сессии...</i>",
+                                parse_mode="HTML"
+                            )
+                    
+                    if session.persona_name:
+                        try:
+                            report_builder = SupervisionReportBuilder(
+                                persona_loader=self.persona_loader,
+                                session_history=session_history
+                            )
+                            report_text, report_tokens = await report_builder.generate_report(session.persona_name)
+                            logger.info(f"Generated supervision report for session {session_id}, tokens used: {report_tokens}")
+                        except Exception as e:
+                            logger.error(f"Error generating supervision report: {e}")
                         
                     # Обновляем данные сессии
                     history = self.message_history.get(user_id, {})
                     session.ended_at = datetime.utcnow()
                     session.is_active = False
-                    
+                    session.report_text = report_text
+                    # Отправляем отчет пользователю, если он сгенерирован
+                    if report_text:
+                        try:
+                            # Разделяем текст на части по 4000 символов (с запасом)
+                            chunk_size = 4000
+                            report_chunks = [report_text[i:i+chunk_size] for i in range(0, len(report_text), chunk_size)]
+                            
+                            for chunk in report_chunks:
+                                await self.bot.send_message(
+                                    telegram_id,
+                                    chunk,
+                                    parse_mode="HTML"
+                                )
+                                # Небольшая пауза между сообщениями
+                                await asyncio.sleep(0.5)
+                                
+                            logger.info(f"Report sent to user {user_id} in {len(report_chunks)} parts")
+                        except Exception as e:
+                            logger.error(f"Error sending report: {e}")
                     try:
                         session.user_messages = json.dumps(history.get('user_messages', []), ensure_ascii=False)
                         session.bot_messages = json.dumps(history.get('bot_messages', []), ensure_ascii=False)
@@ -192,7 +237,7 @@ class SessionManager:
                         session.user_messages = "[]"
                         session.bot_messages = "[]"
                     
-                    session.tokens_spent = history.get('tokens_spent', 0)
+                    session.tokens_spent = history.get('tokens_spent', 0) + report_tokens
                     # Устанавливаем persona_id если есть имя персоны
                     if session.persona_name:
                         # Получаем персону из кэша или базы данных
@@ -230,9 +275,15 @@ class SessionManager:
                         except asyncio.CancelledError:
                             pass
                         del self.active_checks[user_id]
-                    
-                    logger.info(f"Session {session_id} successfully ended for user {user_id}")
-                    return True
+                    await asyncio.sleep(1) # Небольшая пауза перед отправкой уведомления
+                    # Отправляем уведомление
+                    try:
+                        await self.notify_session_end(user_id, db_session)
+                    except Exception as e:
+                        logger.error(f"Error notifying session end: {e}")
+                        
+                        logger.info(f"Session {session_id} successfully ended for user {user_id}")
+                        return True
                     
                 except Exception as e:
                     logger.error(f"Error updating session in DB: {e}")

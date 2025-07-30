@@ -377,7 +377,7 @@ async def process_messages_after_delay(
     session: AsyncSession,
     session_manager: SessionManager,
     delay: int,
-    bot  # Это должен быть экземпляр Bot, а не Message
+    bot  
 ):
     """Обрабатывает все сообщения после задержки"""
     data = await state.get_data()
@@ -444,12 +444,6 @@ async def process_messages_after_delay(
             
             if decision != "silence":
                 try:
-                    # Индикатор печатает - используем переданный bot
-                    typing_task = asyncio.create_task(
-                        bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
-                    )
-                    logger.debug(f"Typing indicator started | session_id={session_id} | user_id={user_id}")
-                    
                     # Подсолка сообщения
                     logger.debug(f"Salting message | session_id={session_id} | user_id={user_id}")
                     salted_msg, tokens_used = await salter.salt_message(combined_message, decision, recent_decisions, meta_history)
@@ -483,14 +477,31 @@ async def process_messages_after_delay(
                     # Отправка ответа - используем переданный bot
                     logger.debug(f"Sending response parts (count={len(response_parts)}) | session_id={session_id} | user_id={user_id}")
                     for part in response_parts:
-                        delay = calculate_typing_delay(part)
                         try:
+                            # Запускаем индикатор печатает для каждой части
+                            typing_task = asyncio.create_task(
+                                bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
+                            )
+                            
+                            delay = calculate_typing_delay(part)
                             await asyncio.sleep(delay)
+                            
+                            # Отправляем сообщение и ждем завершения
                             await bot.send_message(chat_id=message.chat.id, text=part)
-                        except asyncio.CancelledError:
-                            continue
+                            
+                            # Отменяем индикатор печатает
+                            typing_task.cancel()
+                            try:
+                                await typing_task
+                            except asyncio.CancelledError:
+                                pass
+                            
                         except Exception as e:
                             logger.error(f"Error sending message: {e} | session_id={session_id} | user_id={user_id}")
+                            try:
+                                typing_task.cancel()
+                            except:
+                                pass
                         
                     # Проверяем, есть ли новые сообщения в очереди
                     data = await state.get_data()
