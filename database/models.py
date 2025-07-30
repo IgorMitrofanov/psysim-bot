@@ -6,6 +6,12 @@ from enum import Enum as PyEnum
 
 Base = declarative_base()
 
+class TariffType(PyEnum):
+    TRIAL = "trial"
+    START = "start"
+    PRO = "pro"
+    UNLIMITED = "unlimited"
+
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
@@ -13,10 +19,13 @@ class User(Base):
     username = Column(String)
     registered_at = Column(DateTime, default=datetime.datetime.utcnow)
     is_new = Column(Boolean, default=True)
-    active_tariff = Column(String, default="trial")
+    active_tariff = Column(Enum(TariffType), default=TariffType.TRIAL)
     tariff_expires = Column(DateTime)
     language_code = Column(String, nullable=True)
     is_premium = Column(Boolean, default=False)
+    subscription_warning_sent = Column(Boolean, default=False)
+    
+    last_activity = Column(DateTime, default=datetime.datetime.utcnow)  # Последняя активность пользователя
     
     balance = Column(Integer, default=0)
 
@@ -29,8 +38,8 @@ class User(Base):
     sessions = relationship("Session", back_populates="user")
     achievements = relationship("Achievement", back_populates="user")
     referrals = relationship("Referral", back_populates="inviter", foreign_keys='Referral.inviter_id')
-
-
+    admin = relationship("Admin", back_populates="user", uselist=False)
+    
 class Order(Base):
     __tablename__ = "orders"
     id = Column(Integer, primary_key=True)
@@ -40,8 +49,11 @@ class Order(Base):
     price = Column(Integer)
     status = Column(String, default="pending")
     external_id = Column(String, nullable=True) 
+    tariff_id = Column(Integer, ForeignKey("tariffs.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     user = relationship("User", back_populates="orders")
+    tariff = relationship("Tariff", back_populates="orders")
 
 
 class Session(Base):
@@ -55,7 +67,7 @@ class Session(Base):
     is_active = Column(Boolean, default=True)  # Флаг активности сессии
     
     is_free = Column(Boolean, default=False)
-    user_messages = Column(Text, nullable=True)  # Хранить всю переписку пользователя (например, JSON или просто текст)
+    user_messages = Column(Text, nullable=True)  # Хранить всю переписку пользователя (списки строк)
     bot_messages = Column(Text, nullable=True)   # Хранить все ответы бота
 
     report_text = Column(Text, nullable=True)  # Итоговый отчёт по сессии (если есть)
@@ -63,11 +75,13 @@ class Session(Base):
     
     is_rnd = Column(Boolean, default=False) # Для отслеживания случайная сессия или нет, думаю для ачивок и статистики пригодиться
 
-    emotional = Column(String, nullable=True)  # Вместо "emotial" — исправил опечатку
+    emotional = Column(String, nullable=True) 
     resistance_level = Column(String, nullable=True)  # "средний", "высокий"
     persona_name = Column(String, nullable=True) 
 
     user = relationship("User", back_populates="sessions")
+    persona_id = Column(Integer, ForeignKey("personas.id"), nullable=True)
+    persona = relationship("Persona", back_populates="sessions")
 
 
 class Achievement(Base):
@@ -126,3 +140,85 @@ class Feedback(Base):
     
     # Связи
     user = relationship("User")
+    
+    
+#### ADMIN DB
+
+from sqlalchemy import JSON  # Add this import at the top
+
+class Persona(Base):
+    __tablename__ = "personas"
+    
+    id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True, index=True)
+    is_active = Column(Boolean, default=True)
+    
+    # Basic info
+    age = Column(Integer)
+    gender = Column(String, nullable=True)
+    profession = Column(String, nullable=True)
+    appearance = Column(String, nullable=True)
+    short_description = Column(String, nullable=True)
+    
+    # Background and history
+    background = Column(Text)
+    trauma_history = Column(Text) 
+    current_symptoms = Column(Text) 
+    goal_session = Column(Text)
+    tone = Column(Text)
+    
+    # Behavior rules
+    behaviour_rules = Column(Text) 
+    interaction_guide = Column(Text) 
+    self_reports = Column(Text)
+    
+    # Special considerations
+    escalation = Column(Text)  
+    triggers = Column(Text) 
+    
+    # Additional metadata
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, onupdate=datetime.datetime.utcnow)
+    
+    sessions = relationship("Session", back_populates="persona")
+    
+    
+class Tariff(Base):
+    __tablename__ = "tariffs"
+    
+    id = Column(Integer, primary_key=True)
+    name = Column(Enum(TariffType), unique=True, nullable=False)
+    display_name = Column(String, nullable=False)
+    price = Column(Integer, nullable=False)  # в копейках
+    duration_days = Column(Integer, nullable=False)  # Длительность действия тарифа
+    session_quota = Column(Integer, nullable=False)  # Количество доступных сессий на квоту
+    quota_period_days = Column(Integer, default=30)  # Период квоты в днях
+    description = Column(String)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, onupdate=datetime.datetime.utcnow)
+    
+    orders = relationship("Order", back_populates="tariff")  # Add this line
+
+class AdminAuthCode(Base):
+    __tablename__ = "admin_auth_codes"
+    
+    id = Column(Integer, primary_key=True)
+    code = Column(String, unique=True, index=True)  # Сам код (например, 6-значный)
+    admin_user_id = Column(Integer, ForeignKey('users.id'), nullable=False)  # ID админа
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    expires_at = Column(DateTime)  # Время истечения (created_at + 1 час)
+    is_used = Column(Boolean, default=False)
+    
+    # Связь с пользователем
+    admin_user = relationship("User")
+
+class Admin(Base):
+    __tablename__ = "admins"
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'), unique=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    # Связь с пользователем
+    user = relationship("User", back_populates="admin", uselist=False)

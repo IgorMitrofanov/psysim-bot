@@ -1,27 +1,31 @@
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Dict, Tuple
 import asyncio
 from aiogram import Bot
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from database.models import Session as DBSession
-from database.crud import get_sessions_month_count, get_user_by_id, get_telegram_id_by_user_id
+from database.models import Tariff, TariffType, Session, Order
+from database.crud import get_sessions_count_in_quota_period, get_user_by_id, get_telegram_id_by_user_id
 from keyboards.builder import main_menu
 from texts.common import BACK_TO_MENU_TEXT
 from config import logger 
 import json
 from config import config
 from asyncio import Lock
+from core.persones.persona_loader import PersonaLoader
+
 
 # --- Менеджер сессий ---
 # Осуществляет управление сессиями: начало, окончание, нотификация юзера, хранение данных сессии и их запись в БД
 class SessionManager:
-    def __init__(self, bot: Bot):
+    def __init__(self, bot: Bot, admin_engine):
         self.bot = bot            # Инстанс бот
         self.active_checks = {}   # Список активных сессий для таймера
         self.message_history = {} # История сообщений - юзера и персоны
         self.session_ended = {}   # Флаг окончания сессии для каждого пользователя
         self.lock = Lock()
+        self.persona_loader = PersonaLoader(admin_engine)
 
     async def start_session(
         self,
@@ -34,6 +38,10 @@ class SessionManager:
         is_rnd: bool=False, # Случайная ли сессия (настройки сопротивления, эмоции и персонаж). Флаг заложен для ачивок и статистики
     ) -> int:
         """Создает новую сессию в БД и возвращает её ID"""
+        # Получаем пользователя
+        user = await get_user_by_id(db_session, user_id)
+        if not user:
+            raise ValueError(f"User {user_id} not found")
         # Длина сессии из конфига приложения
         session_length = config.SESSION_LENGTH_MINUTES
         expires_at = datetime.utcnow() + timedelta(minutes=int(session_length))
@@ -49,7 +57,9 @@ class SessionManager:
             resistance_level=resistance,
             persona_name=persona_name
         )
+        user.last_activity = datetime.utcnow()
         db_session.add(db_sess)
+        db_session.add(user)
         await db_session.commit()
         await db_session.refresh(db_sess)
         
@@ -58,7 +68,7 @@ class SessionManager:
             'user_messages': [],
             'bot_messages': [],
             'session_id': db_sess.id,
-            'persona': None,
+            'persona_id': None,
             'tokens_spent': 0
         }
         
@@ -74,6 +84,12 @@ class SessionManager:
                    f"Expires at: {expires_at}")
         
         return db_sess.id
+    
+    async def get_persona(self, name: str) -> Optional[Dict]:
+        return await self.persona_loader.get_persona(name)
+    
+    async def get_all_personas(self) -> Dict[str, Dict]:
+        return await self.persona_loader.load_all_personas()
     
     async def _send_warning(self, user_id: int, session_id: int, db_session: AsyncSession):
         """Отправляет предупреждение за N минут до конца"""
@@ -134,7 +150,7 @@ class SessionManager:
             logger.error(f"Error in session timeout check: {e}")
             
 
-    async def end_session(self, user_id: int, session_id: int, db_session: AsyncSession, persona: Optional[object] = None):
+    async def end_session(self, user_id: int, session_id: int, db_session: AsyncSession):
         """Завершает сессию и сохраняет данные"""
         try:
             async with self.lock:
@@ -177,6 +193,22 @@ class SessionManager:
                         session.bot_messages = "[]"
                     
                     session.tokens_spent = history.get('tokens_spent', 0)
+                    # Устанавливаем persona_id если есть имя персоны
+                    if session.persona_name:
+                        # Получаем персону из кэша или базы данных
+                        persona_dict = await self.persona_loader.get_persona(session.persona_name)
+                        if persona_dict and 'persona' in persona_dict:
+                            session.persona_id = persona_dict['persona']['id']
+                            logger.debug(f"Set persona_id={session.persona_id} for session {session_id}")
+                        else:
+                            logger.warning(f"Persona '{session.persona_name}' not found for session {session_id}")
+                    
+                    try:
+                        await db_session.commit()
+                    except Exception as e:
+                        logger.error(f"Commit failed: {e}")
+                        await db_session.rollback()
+                        return False
                     
                     try:
                         await db_session.commit()
@@ -267,28 +299,75 @@ class SessionManager:
         self.message_history.clear()
         self.session_ended.clear()
         
-    async def use_session_quota_or_bonus(self, db_session: AsyncSession, user_id) -> tuple[bool, bool]:
+    async def use_session_quota_or_bonus(
+        self,
+        db_session: AsyncSession, 
+        user_id: int
+    ) -> Tuple[bool, bool]:
         """
-        Пытается использовать квоту или бонус:
-        - Возвращает (True, False) если сессия списана из квоты
-        - Возвращает (True, True) если сессия списана из бонусов
-        - Возвращает (False, False) если ресурсов нет
+        Проверяет, можно ли использовать квоту или бонус.
+        Возвращает:
+        - (True, False) — можно использовать квоту
+        - (True, True)  — можно использовать бонус
+        - (False, False) — нет доступных ресурсов
+        
+        Особенности:
+        - Не учитывает бесплатные подписки (TRIAL) при проверке квоты
+        - Обновляет квоту при смене тарифа
         """
         user = await get_user_by_id(db_session, user_id)
-        quota = config.TARIFF_QUOTAS.get(user.active_tariff, 0)
-        sessions_this_month = await get_sessions_month_count(db_session, user.id)
+        if not user:
+            return False, False
 
-        if sessions_this_month < quota:
-            # Использована квота
+        # Если тариф TRIAL, сразу используем бонус (если есть)
+        if user.active_tariff == TariffType.TRIAL:
+            if user.bonus_balance > 0:
+                user.bonus_balance -= 1
+                await db_session.commit()
+                return True, True
+            return False, False
+
+        tariff = await db_session.execute(
+            select(Tariff).where(Tariff.name == user.active_tariff)
+        )
+        tariff = tariff.scalar_one_or_none()
+        
+        if not tariff:
+            return False, False
+
+        # Получаем дату активации текущего тарифа
+        last_order = await db_session.execute(
+            select(Order)
+            .where(Order.user_id == user.id)
+            .where(Order.tariff_id == tariff.id)
+            .order_by(Order.created_at.desc())
+            .limit(1)
+        )
+        last_order = last_order.scalar_one_or_none()
+        
+        quota_start_date = last_order.created_at
+        quota_period_days = getattr(tariff, "quota_period_days", 30)
+
+        # Получаем количество сессий в текущем периоде квоты (исключая бесплатные)
+        sessions_in_period = await db_session.execute(
+            select(func.count(Session.id))
+            .where(Session.user_id == user.id)
+            .where(Session.started_at >= quota_start_date)
+            .where(Session.is_free == False)  # Исключаем бесплатные сессии
+        )
+        sessions_in_period = sessions_in_period.scalar() or 0
+
+        # Проверяем квоту
+        if sessions_in_period < tariff.session_quota:
             return True, False
-        elif user.bonus_balance > 0:
-            # Использован бонус
+
+        # Проверяем бонусы
+        if user.bonus_balance > 0:
             user.bonus_balance -= 1
             await db_session.commit()
             return True, True
-        else:
-            # Ресурсов нет
-            return False, False
+
+        return False, False
         
     async def notify_session_end(self, user_id: int, db_session: AsyncSession):
         """Уведомляет пользователя об окончании сессии"""

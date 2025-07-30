@@ -10,6 +10,7 @@ from keyboards.builder import (
     feedback_menu
 )
 from database.crud import get_user
+import datetime
 
 from texts.feedback_texts import (
     FEEDBACK_MENU_TEXT,
@@ -89,6 +90,8 @@ async def handle_feedback(message: types.Message, state: FSMContext, session: As
         text=message.text,
         status=FeedbackStatus.NEW.value
     )
+    db_user.last_activity = datetime.datetime.utcnow()
+    session.add(db_user)  # Обновляем последнюю активность пользователя
     session.add(feedback)
     await session.commit()
     
@@ -107,6 +110,8 @@ async def handle_suggestion(message: types.Message, state: FSMContext, session: 
         text=message.text,
         status=FeedbackStatus.NEW.value
     )
+    db_user.last_activity = datetime.datetime.utcnow()
+    session.add(db_user)  # Обновляем последнюю активность пользователя
     session.add(feedback)
     await session.commit()
     
@@ -125,6 +130,8 @@ async def handle_error(message: types.Message, state: FSMContext, session: Async
         text=message.text,
         status=FeedbackStatus.NEW.value
     )
+    db_user.last_activity = datetime.datetime.utcnow()
+    session.add(db_user)  # Обновляем последнюю активность пользователя
     session.add(feedback)
     await session.commit()
     

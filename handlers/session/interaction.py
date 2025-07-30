@@ -1,4 +1,4 @@
-from aiogram import Router, types
+from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 from states import MainMenu
 from handlers.utils import calculate_typing_delay
@@ -11,13 +11,19 @@ from core.persones.persona_response_layer import PersonaResponseLayer
 from sqlalchemy.ext.asyncio import AsyncSession
 from contextlib import asynccontextmanager
 from database.crud import get_user
+from database.models import TariffType
+from aiogram.types import Message
 import random
 import asyncio
+from aiogram.enums import ChatAction
 from services.session_manager import SessionManager
 from config import logger
 from collections import deque
 import time
 from uuid import uuid4
+import os
+from services.speech_to_text import transcribe_voice
+from aiogram.methods import SendChatAction
 
 router = Router(name="session_interaction")
 
@@ -80,6 +86,66 @@ async def session_lock(state: FSMContext):
     finally:
         await state.update_data(session_locked=False)
         logger.debug(f"[LOCK {lock_id}] RELEASED | session_id={session_id} | user_id={user_id}")
+
+@router.message(MainMenu.in_session, F.voice)
+async def handle_voice_message(
+    message: types.Message,
+    state: FSMContext,
+    session: AsyncSession,
+    session_manager: SessionManager,
+    bot
+):
+    
+    user_data = await get_user(session, telegram_id=message.from_user.id)
+    session_id = (await state.get_data()).get("session_id")
+    user_id = user_data.id if user_data else None
+    
+    if not user_data:
+        await message.answer("Ошибка: пользователь не найден.")
+        return
+
+    # Проверка тарифа
+    if user_data.active_tariff in [TariffType.PRO, TariffType.UNLIMITED]:
+        try:
+            # Получаем файл с сервера Telegram
+            file_info = await bot.get_file(message.voice.file_id)
+
+            # Уникальное имя временного файла
+            tmp_path = f"./tmp/{uuid4().hex}.ogg"
+
+            # Скачиваем файл
+            await bot.download_file(file_info.file_path, tmp_path)
+
+            # Распознаём голос
+            text = await transcribe_voice(tmp_path)
+
+            os.remove(tmp_path)  # Удаляем временный файл
+
+            if not text.strip():
+                await message.answer("Не удалось распознать голосовое сообщение.")
+                return
+
+            # Создаём фейковое текстовое сообщение
+            fake_text_message = Message(
+                message_id=message.message_id,
+                date=message.date,
+                chat=message.chat,
+                from_user=message.from_user,
+                message_thread_id=message.message_thread_id,
+                text=text
+            )
+            
+
+            await session_interaction_handler(fake_text_message, state, session, session_manager, bot=message.bot)
+
+        except Exception as e:
+            logger.error(f"Error during voice processing: {e}")
+            await message.answer("Произошла ошибка при обработке голосового сообщения.")
+    else:
+        await message.answer(
+            "<b>Голосовые сообщения доступны только по тарифам PRO и UNLIMITED.</b>\n\n"
+            "Пожалуйста, обновите подписку, чтобы пользоваться этой функцией."
+        )
 
 
 class SafeTimer:
@@ -235,7 +301,8 @@ async def session_interaction_handler(
     message: types.Message, 
     state: FSMContext,
     session: AsyncSession,
-    session_manager: SessionManager
+    session_manager: SessionManager,
+    bot
 ):
     # Получаем данные сессии для логирования
     data = await state.get_data()
@@ -299,8 +366,8 @@ async def session_interaction_handler(
         )
         
         # Запускаем таймеры
-        await processing_timer.start(PROCESSING_DELAY, process_messages_after_delay, state, message, session, session_manager, PROCESSING_DELAY)
-        await inactivity_timer.start(INACTIVITY_DELAY, check_inactivity, state, message, INACTIVITY_DELAY, session, session_manager)
+        await processing_timer.start(PROCESSING_DELAY, process_messages_after_delay, state, message, session, session_manager, PROCESSING_DELAY, bot)
+        await inactivity_timer.start(INACTIVITY_DELAY, check_inactivity, state, message, INACTIVITY_DELAY, session, session_manager, bot)
         
         logger.debug(f"Timers started | session_id={session_id} | user_id={user_id}")
 
@@ -309,7 +376,8 @@ async def process_messages_after_delay(
     message: types.Message,
     session: AsyncSession,
     session_manager: SessionManager,
-    delay: int
+    delay: int,
+    bot  # Это должен быть экземпляр Bot, а не Message
 ):
     """Обрабатывает все сообщения после задержки"""
     data = await state.get_data()
@@ -335,7 +403,7 @@ async def process_messages_after_delay(
                 await state.update_data(is_bot_responding=False)
                 return
             
-            # Берем ВСЕ сообщения из очереди и объединяем их (чтобы бот не отвечал на 1 одно сообщение потом, если его перебили)
+            # Берем ВСЕ сообщения из очереди и объединяем их
             combined_messages = []
             while message_queue:
                 combined_messages.append(message_queue.popleft())
@@ -360,7 +428,7 @@ async def process_messages_after_delay(
                     db_user.id,
                     combined_message,
                     is_user=True,
-                    tokens_used=0 # Никаких токенов не задействовано
+                    tokens_used=0
                 )
             
             meta_history.append({"role": "Психотерапевт (ваш собеседник)", "content": combined_message})
@@ -376,13 +444,10 @@ async def process_messages_after_delay(
             
             if decision != "silence":
                 try:
-                    # Индикатор печатает
-                    async def typing_callback():
-                        while True:
-                            await message.bot.send_chat_action(message.chat.id, 'typing')
-                            await asyncio.sleep(4)
-                    
-                    typing_task = asyncio.create_task(typing_callback())
+                    # Индикатор печатает - используем переданный bot
+                    typing_task = asyncio.create_task(
+                        bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
+                    )
                     logger.debug(f"Typing indicator started | session_id={session_id} | user_id={user_id}")
                     
                     # Подсолка сообщения
@@ -415,23 +480,24 @@ async def process_messages_after_delay(
                     responser.update_history(" ".join(response_parts), False)
                     meta_history.append({"role": "Вы (пациент)", "content": " ".join(response_parts)})
                     
-                    # Отправка ответа
+                    # Отправка ответа - используем переданный bot
                     logger.debug(f"Sending response parts (count={len(response_parts)}) | session_id={session_id} | user_id={user_id}")
                     for part in response_parts:
                         delay = calculate_typing_delay(part)
                         try:
                             await asyncio.sleep(delay)
-                            await message.answer(part)
+                            await bot.send_message(chat_id=message.chat.id, text=part)
                         except asyncio.CancelledError:
                             continue
+                        except Exception as e:
+                            logger.error(f"Error sending message: {e} | session_id={session_id} | user_id={user_id}")
                         
-                    # Проверяем, есть ли новые сообщения в очереди (чтобы бот не отвечал на 1 одно сообщение потом, если его перебили)
+                    # Проверяем, есть ли новые сообщения в очереди
                     data = await state.get_data()
                     current_queue = data.get("message_queue", deque())
                     if current_queue:
                         logger.debug(f"New messages arrived during response (count={len(current_queue)}), processing them | session_id={session_id} | user_id={user_id}")
-                        # Не очищаем очередь - она будет обработана в следующей итерации
-                        await process_messages_after_delay(state, message, session, session_manager, 0)
+                        await process_messages_after_delay(state, message, session, session_manager, 0, bot)
                     else:
                         await state.update_data(is_bot_responding=False)
                     
@@ -448,7 +514,7 @@ async def process_messages_after_delay(
                     if decision == "disengage":
                         logger.debug(f"Persona decided to disengage | session_id={session_id} | user_id={user_id}")
                         await asyncio.sleep(1)
-                        await message.answer("<i>Персонаж решил уйти...</i>")
+                        await bot.send_message(chat_id=message.chat.id, text="<i>Персонаж решил уйти...</i>")
                         await asyncio.sleep(1)
                         await end_session_cleanup(message, state, session, session_manager)
                 finally:
@@ -465,10 +531,10 @@ async def process_messages_after_delay(
                     data = await state.get_data()
                     if data.get("message_queue", deque()):
                         logger.debug(f"Processing remaining messages in queue | session_id={session_id} | user_id={user_id}")
-                        await process_messages_after_delay(state, message, session, session_manager, 0)
+                        await process_messages_after_delay(state, message, session, session_manager, 0, bot)
             else:
                 logger.debug(f"Persona chose silence | session_id={session_id} | user_id={user_id}")
-                await message.answer("<i>Персонаж предпочел не отвечать на это.</i>")
+                await bot.send_message(chat_id=message.chat.id, text="<i>Персонаж предпочел не отвечать на это.</i>")
                 responser.update_history("*молчание, ваш персонаж (пациент) предпочел не отвечать*", False)
                 meta_history.append({"role": "Вы (пациент)", "content": "*молчание, ваш персонаж (пациент) предпочел не отвечать*"})
                 if db_user:
@@ -496,7 +562,7 @@ async def process_messages_after_delay(
                     logger.debug(f"Restarting inactivity timer | session_id={session_id} | user_id={user_id}")
                     await inactivity_timer.cancel()
                     inactivity_timer = SafeTimer("inactivity", state)
-                    await inactivity_timer.start(120, check_inactivity, state, message, 120, session, session_manager)
+                    await inactivity_timer.start(120, check_inactivity, state, message, 120, session, session_manager, bot)
                     await state.update_data(inactivity_timer=inactivity_timer)
 
     except Exception as e:
@@ -514,7 +580,8 @@ async def check_inactivity(
     message: types.Message,
     delay: int,
     session: AsyncSession,
-    session_manager: SessionManager
+    session_manager: SessionManager,
+    bot
 ):
     """Проверяет неактивность пользователя с учетом сообщений бота"""
     data = await state.get_data()
@@ -578,8 +645,10 @@ async def check_inactivity(
                     message, 
                     session, 
                     session_manager, 
-                    0  # Немедленная обработка
+                    0,  # Немедленная обработка
+                    bot                
                 )
+                
                 
     except asyncio.CancelledError:
         logger.debug(f"Inactivity check cancelled | session_id={session_id} | user_id={user_id}")

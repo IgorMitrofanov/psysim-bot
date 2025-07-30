@@ -55,11 +55,11 @@ async def init_db():
     
     engine = create_async_engine(
         config.DATABASE_URL,
-        connect_args={
-            "ssl": ssl_ctx,
-        },
-        pool_pre_ping=True,  # Проверка соединения перед использованием
-        echo=False,          # Логирование SQL запросов (False для продакшена)
+        # connect_args={
+        #     "ssl": ssl_ctx,
+        # },
+        # pool_pre_ping=True,  # Проверка соединения перед использованием
+        # echo=False,          # Логирование SQL запросов (False для продакшена)
     )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -74,8 +74,20 @@ async def init_db():
 
 async def main():
     engine = await init_db()
+    # Добавляем дефолные тарифы если их нет обновление 0.0.0p+
+    from default_tariffs_create import create_default_tariffs
+    async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+        await create_default_tariffs(session)
+        
     bot = Bot(token=config.BOT_TOKEN, default=DEFAULT_BOT_PROPERTIES)  
     dp = Dispatcher(storage=MemoryStorage()) # заменить на реддис например
+
+    
+    # Запускаем миграцию персонажей перед стартом бота # обновлние 0.0.0p
+    from migrate_personas import migrate_personas
+    logger.info("Starting personas migration...")
+    await migrate_personas()
+    logger.info("Personas migration completed successfully")
     
     sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
     dp.message.middleware(DBSessionMiddleware(sessionmaker))
@@ -84,8 +96,9 @@ async def main():
     # Фоновая задача по проверке подписок
     asyncio.create_task(check_subscriptions_expiry(bot, sessionmaker))
     # Инициализация менеджера сессий
-    session_manager = SessionManager(bot)
+    session_manager = SessionManager(bot, admin_engine=engine)
     dp['session_manager'] = session_manager
+    
     
     
     for router in routers:

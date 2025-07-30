@@ -4,7 +4,6 @@ from aiogram.fsm.context import FSMContext
 from states import MainMenu
 from keyboards.builder import subscription_keyboard_when_sessions_left
 from datetime import datetime
-from core.persones.persona_loader import load_personas
 from sqlalchemy.ext.asyncio import AsyncSession
 from database.crud import get_user
 from texts.session_texts import (
@@ -15,7 +14,6 @@ from texts.session_texts import (
     emotion_options,
     NO_PERSONES_TEXT)
 from services.session_manager import SessionManager
-from core.persones.persona_loader import load_personas
 from core.persones.persona_decision_layer import PersonaDecisionLayer
 from core.persones.persona_humanization_layer import PersonaHumanizationLayer
 from core.persones.persona_instruction_layer import PersonaSalterLayer
@@ -44,12 +42,12 @@ async def random_session_handler(
     if not used:
         await callback.message.edit_text(
             NO_QUOTA_OR_BONUS_FOR_SESSION,
-            reply_markup=subscription_keyboard_when_sessions_left()
+            reply_markup=await subscription_keyboard_when_sessions_left(session)
         )
         return
     # Загрузка списка персонажей
     
-    personas = load_personas()
+    personas = await session_manager.get_all_personas()
     persona_names = list(personas.keys())
     if not persona_names:
         await callback.message.edit_text(NO_PERSONES_TEXT)
@@ -75,7 +73,7 @@ async def random_session_handler(
     session_id = await session_manager.start_session(
         db_session=session,
         user_id=db_user.id,
-        is_free=db_user.active_tariff == "trial",
+        is_free=db_user.active_tariff.value == "trial",
         is_rnd=True,
         persona_name=persona_name,
         resistance=resistance,
