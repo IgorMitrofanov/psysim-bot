@@ -9,6 +9,7 @@ from handlers import routers
 import ssl
 from middlewares.db import DBSessionMiddleware
 from services.session_manager import SessionManager
+from services.achievements import AchievementSystem
 from pathlib import Path
 import aiohttp
 
@@ -93,11 +94,14 @@ async def main():
     dp.message.middleware(DBSessionMiddleware(sessionmaker))
     dp.callback_query.middleware(DBSessionMiddleware(sessionmaker))
     dp.startup.register(on_startup)
+    
     # Фоновая задача по проверке подписок
     asyncio.create_task(check_subscriptions_expiry(bot, sessionmaker))
-    # Инициализация менеджера сессий
-    session_manager = SessionManager(bot, engine=engine)
+    
+    achievement_system = AchievementSystem(bot, engine=engine)
+    session_manager = SessionManager(bot, engine=engine, achievement_system=achievement_system)
     dp['session_manager'] = session_manager
+    dp['achievement_system'] = achievement_system
     
     
     

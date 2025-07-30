@@ -4,7 +4,7 @@ import asyncio
 from aiogram import Bot
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from database.models import Session as DBSession
+from database.models import Session
 from database.models import Tariff, TariffType, Session, Order
 from database.crud import get_sessions_count_in_quota_period, get_user_by_id, get_telegram_id_by_user_id
 from keyboards.builder import main_menu
@@ -15,17 +15,20 @@ from config import config
 from asyncio import Lock
 from core.persones.persona_loader import PersonaLoader
 from core.reports.supervision_report_builder import SupervisionReportBuilder
+from services.achievements import AchievementSystem
+from database.models import AchievementType
 
 # --- Менеджер сессий ---
 # Осуществляет управление сессиями: начало, окончание, нотификация юзера, хранение данных сессии и их запись в БД
 class SessionManager:
-    def __init__(self, bot: Bot, engine):
+    def __init__(self, bot: Bot, engine, achievement_system):
         self.bot = bot            # Инстанс бот
         self.active_checks = {}   # Список активных сессий для таймера
         self.message_history = {} # История сообщений - юзера и персоны
         self.session_ended = {}   # Флаг окончания сессии для каждого пользователя
         self.lock = Lock()
         self.persona_loader = PersonaLoader(engine)
+        self.achievement_system = achievement_system
 
     async def start_session(
         self,
@@ -46,7 +49,7 @@ class SessionManager:
         session_length = config.SESSION_LENGTH_MINUTES
         expires_at = datetime.utcnow() + timedelta(minutes=int(session_length))
         # Запись в БД
-        db_sess = DBSession(
+        db_sess = Session(
             user_id=user_id,
             started_at=datetime.utcnow(),
             expires_at=expires_at,
@@ -96,7 +99,7 @@ class SessionManager:
         try:
             if user_id in self.message_history and not self.session_ended.get(user_id, False):
                 session_data = self.message_history[user_id]
-                stmt = select(DBSession).where(DBSession.id == session_data['session_id'])
+                stmt = select(Session).where(Session.id == session_data['session_id'])
                 result = await db_session.execute(stmt)
                 session = result.scalar_one_or_none()
                 
@@ -142,7 +145,7 @@ class SessionManager:
                 logger.info(f"Waiting {time_left} seconds until session end for user {user_id}")
                 await asyncio.sleep(time_left)
             # Завершаем сессиию
-            await self.end_session(user_id, session_id, db_session)
+            await self.end_session(user_id, session_id, db_session, )
             
         except asyncio.CancelledError:
             logger.info(f"Session check cancelled for user {user_id}")
@@ -159,9 +162,9 @@ class SessionManager:
                     return False
 
                 # Получаем сессию с явным указанием на необходимость обновления
-                stmt = select(DBSession).where(
-                    DBSession.id == session_id,
-                    DBSession.user_id == user_id
+                stmt = select(Session).where(
+                    Session.id == session_id,
+                    Session.user_id == user_id
                 ).with_for_update()  # Блокируем запись для обновления
                 
                 try:
@@ -187,6 +190,8 @@ class SessionManager:
                     report_text = None
                     report_tokens = 0
                     telegram_id = await get_telegram_id_by_user_id(db_session, user_id)
+                    
+                    # Достаточно длинный процесс, как бы сигнализиовать пользователю, что бот не завис?
                     await self.bot.send_message(
                                 telegram_id,
                                 "<i>Генерация супервизорского отчета по сессии...</i>",
@@ -278,12 +283,13 @@ class SessionManager:
                     await asyncio.sleep(1) # Небольшая пауза перед отправкой уведомления
                     # Отправляем уведомление
                     try:
+                        await self._check_session_achievements(user_id, db_session, session)
                         await self.notify_session_end(user_id, db_session)
-                    except Exception as e:
-                        logger.error(f"Error notifying session end: {e}")
-                        
                         logger.info(f"Session {session_id} successfully ended for user {user_id}")
                         return True
+                    except Exception as e:
+                        logger.error(f"Error notifying session end: {e}")
+                        return False
                     
                 except Exception as e:
                     logger.error(f"Error updating session in DB: {e}")
@@ -318,10 +324,10 @@ class SessionManager:
         if self.session_ended.get(user_id, False):
             return False
             
-        stmt = select(DBSession).where(
-            DBSession.user_id == user_id,
-            DBSession.is_active == True
-        ).order_by(DBSession.started_at.desc()).limit(1)
+        stmt = select(Session).where(
+            Session.user_id == user_id,
+            Session.is_active == True
+        ).order_by(Session.started_at.desc()).limit(1)
         
         result = await db_session.execute(stmt)
         session = result.scalar_one_or_none()
@@ -436,3 +442,23 @@ class SessionManager:
             logger.info(f"Session end notification sent to user {user_id}")
         except Exception as e:
             logger.error(f"Error sending session end notification: {e}")
+            
+    async def _check_session_achievements(self, user_id: int, db_session: AsyncSession, session: Session):
+        """Проверяет достижения после сессии"""
+        try:
+            if self.achievement_system:
+                session_data = {
+                    'started_at': session.started_at,
+                    'ended_at': session.ended_at,
+                    'resistance_level': session.resistance_level,
+                    'emotional': session.emotional,
+                    'persona_id': session.persona_id,
+                    'is_rnd': session.is_rnd,
+                    'tokens_spent': session.tokens_spent,
+                    'persona_name': session.persona_name
+                }
+                
+                await self.achievement_system.check_session_achievements(user_id, session_data)
+                logger.info(f"Achievements checked for user {user_id} after session {session.id}")
+        except Exception as e:
+            logger.error(f"Error checking achievements: {e}", exc_info=True)
