@@ -57,10 +57,6 @@ def session_confirm_menu():
         [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_main")]
     ])
     
-def session_menu():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔚 Завершить сессию", callback_data="not_implemented")],
-    ])   
 
 def profile_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -68,7 +64,7 @@ def profile_keyboard():
         [InlineKeyboardButton(text="📦 Приобрести подписку", callback_data="buy")],
         [InlineKeyboardButton(text="📊 Мои сессии и отчёты", callback_data="my_sessions")],
         [InlineKeyboardButton(text="🤝 Партнерская пограмма", callback_data="referral")],
-        [InlineKeyboardButton(text="🎯 Мои цели", callback_data="not_implemented")],
+        # [InlineKeyboardButton(text="🎯 Мои цели", callback_data="not_implemented")], # пока уберу
         [InlineKeyboardButton(text="🏅 Мои достижения", callback_data="my_achievements")],
         [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_main")],
     ])
