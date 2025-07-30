@@ -157,8 +157,11 @@ class Persona(Base):
     age = Column(Integer)
     gender = Column(String, nullable=True)
     profession = Column(String, nullable=True)
-    appearance = Column(String, nullable=True)
-    short_description = Column(String, nullable=True)
+
+    marital_status = Column(String, nullable=True)
+    living_situation = Column(String, nullable=True)
+    education = Column(String, nullable=True)
+    
     
     # Background and history
     background = Column(Text)

@@ -73,7 +73,7 @@ async def random_session_handler(
     session_id = await session_manager.start_session(
         db_session=session,
         user_id=db_user.id,
-        is_free=db_user.active_tariff.value == "trial",
+        is_free=is_free,
         is_rnd=True,
         persona_name=persona_name,
         resistance=resistance,

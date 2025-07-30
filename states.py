@@ -7,7 +7,6 @@ class MainMenu(StatesGroup):
     error_report = State()
     session_resistance = State()
     session_emotion = State()
-    session_format = State()
     session_persona = State()
     session_confirm = State()
     in_session = State()

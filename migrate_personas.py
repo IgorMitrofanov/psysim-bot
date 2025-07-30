@@ -31,16 +31,24 @@ async def migrate_personas():
             if existing_persona:
                 print(f"Persona {persona_name} already exists, skipping...")
                 continue
-            
+            short_description_parts = []
+            if marital_status := data["persona"].get("marital_status"):
+                short_description_parts.append(f"Семейное положение: {marital_status}")
+            if living_situation := data["persona"].get("living_situation"):
+                short_description_parts.append(f"Проживает: {living_situation}")
+            if education := data["persona"].get("education"):
+                short_description_parts.append(f"Образование: {education}")
+
             # Create new persona record with proper JSON serialization
             try:
                 persona = Persona(
                     name=persona_name,
                     age=data["persona"].get("age"),
                     gender=data["persona"].get("gender"),
-                    profession=data["persona"].get("profession"),
-                    appearance=data["persona"].get("appearance"),
-                    short_description=data["persona"].get("short_description"),
+                    profession=data["persona"].get("occupation"),
+                    marital_status=data["persona"].get("marital_status"),
+                    living_situation=data["persona"].get("living_situation"),
+                    education=data["persona"].get("education"),
                     background=data["background"],
                     trauma_history=json.dumps(data["trauma_history"], ensure_ascii=False),
                     current_symptoms=json.dumps(data["current_symptoms"], ensure_ascii=False),

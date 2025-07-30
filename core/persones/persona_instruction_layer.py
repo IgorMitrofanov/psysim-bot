@@ -93,6 +93,15 @@ class PersonaSalterLayer:
         persona = self.persona_data.get('persona', {})
         profile = self.persona_data.get('personality_profile', {})
         
+        basic_info = [
+        f"Имя: {persona.get('name', '—')}",
+        f"Возраст: {persona.get('age', '—')}",
+        f"Профессия: {persona.get('profession', '—')}",
+        f"Семейное положение: {persona.get('marital_status', '—')}",
+        f"Жилищные условия: {persona.get('living_situation', '—')}",
+        f"Образование: {persona.get('education', '—')}"
+        ]
+        
         system_prompt = f"""
         Ты психологический ассистент, помогающий формировать естественные ответы пациента в терапии.
         Сгенерируй краткую (1-2 предложения), конкретную инструкцию для ответа пациента.
@@ -114,7 +123,10 @@ class PersonaSalterLayer:
         Возраст: {persona.get('age', '?')}
         Стиль привязанности: {profile.get('attachment_style', 'не определен')}
         Преобладающие схемы: {', '.join(profile.get('predominant_schemas', [])) if profile.get('predominant_schemas') else 'нет данных'}
-
+        
+        # ОСНОВНАЯ ИНФОРМАЦИЯ:
+         {"\n".join(basic_info)}
+    
         """
         
         tone_data = self.persona_data.get("tone", {})

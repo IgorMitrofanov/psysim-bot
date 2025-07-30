@@ -4,7 +4,6 @@ from states import MainMenu
 from keyboards.builder import (
     session_resistance_menu,
     session_emotion_menu,
-    session_format_menu,
     session_confirm_menu,
     main_menu,
     persona_selection_menu,
@@ -20,7 +19,6 @@ from database.crud import get_user
 from texts.session_texts import (
     SESSION_RESISTANCE_SELECT,
     EMOTION_SELECT_TEXT,
-    FORMAT_SELECT_TEXT,
     CONFIRM_SESSION_TEXT,
     SESSION_STARTED_TEXT,
     NO_USER_TEXT,
@@ -28,9 +26,6 @@ from texts.session_texts import (
     CHOOSE_PERSONE_FOR_SESSION_TEXT,
     res_map,
     emo_map,
-    format_map,
-    SESSION_RESET_TEXT,
-    SESSION_RESET_ERROR_TEXT
 )
 from texts.common import BACK_TO_MENU_TEXT
 from services.session_manager import SessionManager
@@ -74,16 +69,14 @@ async def session_confirm_handler(
             persona_data = personas.get(persona_name)
             if not persona_data:
                 await callback.message.edit_text("Персонаж не найден. Попробуйте снова.")
-                await state.set_state(MainMenu.session_format)
+                await state.set_state(MainMenu.session_emotion)
                 return
             
             resistance_raw = data.get("resistance")
             emotion_raw = data.get("emotion")
-            format_raw = data.get("format")
             
             resistance =res_map.get(resistance_raw)
             emotion = emo_map.get(emotion_raw)
-            format = format_map.get(format_raw)
             
             # Инициализация 1 слоя ИИ, принятие решений
             decisioner = PersonaDecisionLayer(persona_data, resistance_level=resistance, emotional_state=emotion)
@@ -118,7 +111,7 @@ async def session_confirm_handler(
             session_id = await session_manager.start_session(
                 db_session=session,
                 user_id=db_user.id,
-                is_free=db_user.active_tariff.value == "trial",
+                is_free=is_free,
                 persona_name=persona_name,
                 resistance=resistance,
                 emotion=emotion
@@ -130,7 +123,6 @@ async def session_confirm_handler(
                 user_id=db_user.id,
                 resistance=resistance,
                 emotion=emotion,
-                format=format,
                 decisioner=decisioner,
                 responser=responser,
                 meta_history=meta_history,
@@ -144,7 +136,6 @@ async def session_confirm_handler(
                     resistance=resistance,
                     emotion=emotion,
                     selected_persona=persona_data['persona']['name'],
-                    format=format
                 )
             )
             # Стейт - в сессии
@@ -182,33 +173,12 @@ async def session_resistance_handler(callback: types.CallbackQuery, state: FSMCo
 
 # --- Выбор эмоции ---
 @router.callback_query(MainMenu.session_emotion)
-async def session_emotion_handler(callback: types.CallbackQuery, state: FSMContext):
+async def session_emotion_handler(callback: types.CallbackQuery, state: FSMContext, session_manager: SessionManager):
     await callback.answer()
     if callback.data.startswith("emotion_"):
         # Выбор
         await state.update_data(emotion=callback.data)
-        await callback.message.edit_text(
-            FORMAT_SELECT_TEXT,
-            reply_markup=session_format_menu()
-        )
-        await state.set_state(MainMenu.session_format)
-    elif callback.data == "back_to_resistance":
-        # Вернутся к выбору сопротивления
-        await callback.message.edit_text(
-            SESSION_RESISTANCE_SELECT,
-            reply_markup=session_resistance_menu()
-        )
-        await state.set_state(MainMenu.session_resistance)
-
-# --- Выбор формата --- 
-# На самом деле думаю убрать это. Просто если риходит голосовая от пользователя - если тариф 
-# позволяет - обрабатываем, если нет, предалагем перейти на тариф где есть гс
-@router.callback_query(MainMenu.session_format)
-async def session_format_handler(callback: types.CallbackQuery, state: FSMContext, session_manager: SessionManager):
-    await callback.answer()
-    if callback.data in ["format_text", "format_audio"]:
-        await state.update_data(format=callback.data)
-
+        
         personas = await session_manager.get_all_personas()
         persona_names = list(personas.keys())
 
@@ -217,6 +187,49 @@ async def session_format_handler(callback: types.CallbackQuery, state: FSMContex
             reply_markup=persona_selection_menu(persona_names)
         )
         await state.set_state(MainMenu.session_persona)
+    elif callback.data == "back_to_resistance":
+        # Вернутся к выбору сопротивления
+        await callback.message.edit_text(
+            SESSION_RESISTANCE_SELECT,
+            reply_markup=session_resistance_menu()
+        )
+        await state.set_state(MainMenu.session_resistance)
+
+# --- Выбор персонажа ---
+@router.callback_query(MainMenu.session_persona)
+async def session_persona_handler(callback: types.CallbackQuery, state: FSMContext, session_manager: SessionManager):
+    await callback.answer()
+
+    if callback.data.startswith("persona_"):
+        selected_persona = callback.data.replace("persona_", "")
+        personas = await session_manager.get_all_personas()
+        persona_data = personas.get(selected_persona)
+        
+        if not persona_data:
+            await callback.message.edit_text("Персонаж не найден. Попробуйте снова.")
+            return
+            
+        persona_info = persona_data['persona']
+        
+        # Format persona details
+        details = [
+            f"🧍 Персонаж: {persona_info.get('name', 'Неизвестно')}",
+            f"👤 Возраст: {persona_info.get('age', 'Неизвестно')}",
+            f"🚻 Пол: {persona_info.get('gender', 'Неизвестно')}",
+            f"💼 Профессия: {persona_info.get('profession', 'Неизвестно')}",
+            "",
+            "📝 Дополнительно:",
+            f"  - Семейное положение: {persona_info.get('marital_status', 'Неизвестно')}",
+            f"  - Проживание: {persona_info.get('living_situation', 'Неизвестно')}",
+            f"  - Образование: {persona_info.get('education', 'Неизвестно')}"
+        ]
+        
+        await state.update_data(persona_name=selected_persona)
+        await callback.message.edit_text(
+            CONFIRM_SESSION_TEXT + "\n\n" + "\n".join(details),
+            reply_markup=session_confirm_menu()
+        )
+        await state.set_state(MainMenu.session_confirm)
 
     elif callback.data == "back_to_emotion":
         await callback.message.edit_text(
@@ -224,26 +237,3 @@ async def session_format_handler(callback: types.CallbackQuery, state: FSMContex
             reply_markup=session_emotion_menu()
         )
         await state.set_state(MainMenu.session_emotion)
-
-
-# --- Выбор персонажа ---
-@router.callback_query(MainMenu.session_persona)
-async def session_persona_handler(callback: types.CallbackQuery, state: FSMContext):
-    await callback.answer()
-
-    if callback.data.startswith("persona_"):
-        selected_persona = callback.data.replace("persona_", "")
-        await state.update_data(persona_name=selected_persona)
-
-        await callback.message.edit_text(
-            CONFIRM_SESSION_TEXT + f"\n\n🧍 Персонаж: {selected_persona}",
-            reply_markup=session_confirm_menu()
-        )
-        await state.set_state(MainMenu.session_confirm)
-
-    elif callback.data == "back_to_format":
-        await callback.message.edit_text(
-            FORMAT_SELECT_TEXT,
-            reply_markup=session_format_menu()
-        )
-        await state.set_state(MainMenu.session_format)

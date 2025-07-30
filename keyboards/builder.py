@@ -51,13 +51,6 @@ def session_emotion_menu():
         [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_resistance")]
     ])
 
-def session_format_menu():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💬 Текст", callback_data="format_text")],
-        [InlineKeyboardButton(text="🎧 Аудио", callback_data="not_implemented")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_emotion")]
-    ])
-
 def session_confirm_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🟣 Начать сессию", callback_data="session_confirm_start")],
@@ -180,7 +173,7 @@ def persona_selection_menu(personas: list[str]) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text=f"🧍 {p}", callback_data=f"persona_{p}")]
         for p in personas
     ]
-    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_format")])
+    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_emotion")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def sessions_keyboard(sessions: list, page: int = 0, per_page: int = 5):
