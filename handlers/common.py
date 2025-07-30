@@ -77,14 +77,36 @@ async def handle_get_admin_code(message, session: AsyncSession):
         await message.answer("У вас нет прав администратора")
         return
     
-    # Генерируем случайный 6-значный код
+    # Проверяем наличие активного кода
+    existing_code = await session.execute(
+        select(AdminAuthCode)
+        .where(
+            AdminAuthCode.admin_user_id == admin.user_id,
+            AdminAuthCode.expires_at > datetime.datetime.utcnow(),
+            AdminAuthCode.is_used == 0  # Код еще не использован
+        )
+        .order_by(AdminAuthCode.created_at.desc())  # Берем самый свежий
+    )
+    existing_code = existing_code.scalar_one_or_none()
+    
+    if existing_code:
+        # Если есть активный код, возвращаем его
+        await message.answer(
+            f"🔑 Ваш код для входа в админ-панель: <code>{existing_code.code}</code>\n"
+            f"⏳ Действителен до: {existing_code.expires_at.strftime('%Y-%m-%d %H:%M')}\n\n"
+            "Используйте его на странице входа в админ-панель.",
+            parse_mode="HTML"
+        )
+        return
+    
+    # Генерируем новый код только если нет активного
     code = ''.join(random.choices('0123456789', k=6))
     expires_at = datetime.datetime.utcnow() + datetime.timedelta(hours=1)
     
     # Сохраняем код в БД
     auth_code = AdminAuthCode(
         code=code,
-        admin_user_id=admin.user_id,  # Используем user_id из таблицы admins
+        admin_user_id=admin.user_id,
         expires_at=expires_at
     )
     session.add(auth_code)
@@ -95,7 +117,7 @@ async def handle_get_admin_code(message, session: AsyncSession):
         f"🔑 Ваш код для входа в админ-панель: <code>{code}</code>\n"
         f"⏳ Действителен до: {expires_at.strftime('%Y-%m-%d %H:%M')}\n\n"
         "Используйте его на странице входа в админ-панель.",
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
 
 @router.callback_query(lambda c: c.data == "back_main")
