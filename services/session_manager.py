@@ -16,12 +16,13 @@ from asyncio import Lock
 from core.persones.persona_loader import PersonaLoader
 from core.reports.supervision_report_builder import SupervisionReportBuilder
 from core.reports.supervision_report_builder_low_cost import SimpleSupervisionReportBuilder
+from services.achievements import AchievementSystem
 
 
 # --- Менеджер сессий ---
 # Осуществляет управление сессиями: начало, окончание, нотификация юзера, хранение данных сессии и их запись в БД
 class SessionManager:
-    def __init__(self, bot: Bot, engine, achievement_system):
+    def __init__(self, bot: Bot, engine, achievement_system: AchievementSystem):
         self.bot = bot            # Инстанс бот
         self.active_checks = {}   # Список активных сессий для таймера
         self.message_history = {} # История сообщений - юзера и персоны

@@ -110,13 +110,18 @@ class Achievement(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     badge_code = Column(Enum(AchievementType))  # Тип достижения
-    tier = Column(Enum(AchievementTier))  # Уровень достижения (новое поле)
+    tier = Column(Enum(AchievementTier))  # Уровень достижения 
     awarded_at = Column(DateTime, default=datetime.datetime.utcnow)
     progress = Column(Integer, default=100)  # Прогресс (0-100%)
-    points = Column(Integer)  # Количество очков за достижение (новое поле)
+    points = Column(Integer)  # Количество очков за достижение 
     
     user = relationship("User", back_populates="achievements")
 
+class AchievementProgress(Base):
+    __tablename__ = 'achievement_progress'
+    user_id = Column(Integer, ForeignKey('users.id'), primary_key=True)
+    achievement_type = Column(Enum(AchievementType), primary_key=True)
+    progress = Column(Integer, default=0)
 
 class Referral(Base):
     __tablename__ = "referrals"

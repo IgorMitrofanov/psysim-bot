@@ -5,7 +5,7 @@ import datetime
 from enum import Enum
 import logging
 from collections import defaultdict
-from database.models import Achievement, User, Session, AchievementType, AchievementTier, Referral
+from database.models import Achievement, User, Session, AchievementType, AchievementTier, AchievementProgress, Referral, Feedback
 from sqlalchemy.ext.asyncio import AsyncSession
 from config import logger
 from sqlalchemy.future import select
@@ -85,8 +85,59 @@ class AchievementSystem:
             }
         }
     
+    async def _get_total_progress(self, session: AsyncSession, user_id: int, achievement_type: AchievementType, increment: int) -> int:
+        """Вычисляет общий прогресс для достижения"""
+        # Для достижений, которые можно посчитать из других таблиц
+        if achievement_type == AchievementType.FEEDBACK_CONTRIBUTOR:
+            return (await session.execute(
+                select(func.count()).select_from(Feedback)
+                .filter(Feedback.user_id == user_id)
+            )).scalar() or 0
+        
+        elif achievement_type == AchievementType.SESSION_COUNT:
+            return (await session.execute(
+                select(func.count()).select_from(Session)
+                .filter(Session.user_id == user_id)
+            )).scalar() or 0
+        
+        elif achievement_type == AchievementType.HIGH_RESISTANCE:
+            return (await session.execute(
+                select(func.count()).select_from(Session)
+                .filter(
+                    Session.user_id == user_id,
+                    Session.resistance_level == 'high'
+                )
+            )).scalar() or 0
+        
+        elif achievement_type == AchievementType.REFERRAL_MASTER:
+            return (await session.execute(
+                select(func.count()).select_from(Referral)
+                .filter(Referral.inviter_id == user_id)
+            )).scalar() or 0
+        
+        # Для остальных достижений используем AchievementProgress
+        progress_record = await session.execute(
+            select(AchievementProgress)
+            .filter(
+                AchievementProgress.user_id == user_id,
+                AchievementProgress.achievement_type == achievement_type
+            )
+        ).scalar_one_or_none()
+        
+        if not progress_record:
+            progress_record = AchievementProgress(
+                user_id=user_id,
+                achievement_type=achievement_type,
+                progress=0
+            )
+            session.add(progress_record)
+            await session.flush()
+        
+        progress_record.progress += increment
+        return progress_record.progress
+    
     async def check_achievements(self, user_id: int, achievement_type: AchievementType, progress_increment: int = 1) -> List[Achievement]:
-        """Проверяет и обновляет достижения пользователя"""
+        """Проверяет и выдает достижения"""
         async with self.async_session() as session:
             try:
                 # Получаем текущие достижения пользователя
@@ -99,42 +150,38 @@ class AchievementSystem:
                 )
                 user_achievements = result.scalars().all()
                 
-                # Получаем текущий прогресс
-                current_progress = defaultdict(int)
-                for ach in user_achievements:
-                    current_progress[ach.tier] = ach.progress
+                # Получаем общий прогресс
+                total_progress = await self._get_total_progress(
+                    session, user_id, achievement_type, progress_increment
+                )
                 
                 # Получаем конфигурацию для этого типа достижения
                 config = self.achievement_config.get(achievement_type, {})
                 new_achievements = []
                 
-                # Проверяем каждый уровень достижения
-                for tier, requirements in config.items():
-                    required = requirements['required']
-                    points = requirements['points']
+                # Проверяем каждый уровень в порядке возрастания
+                for tier in [AchievementTier.BRONZE, AchievementTier.SILVER, AchievementTier.GOLD, AchievementTier.PLATINUM]:
+                    if tier not in config:
+                        continue
                     
-                    # Если у пользователя уже есть этот уровень, пропускаем
+                    # Если достижение уже получено, пропускаем
                     if any(ach.tier == tier for ach in user_achievements):
                         continue
                     
-                    # Обновляем прогресс
-                    progress = current_progress.get(tier, 0) + progress_increment
-                    
-                    # Если прогресс достиг или превысил требуемое значение
-                    if progress >= required:
-                        # Создаем новое достижение
+                    # Проверяем, достигнут ли требуемый прогресс
+                    if total_progress >= config[tier]['required']:
                         new_ach = Achievement(
                             user_id=user_id,
                             badge_code=achievement_type,
                             tier=tier,
                             progress=100,
-                            points=points,
+                            points=config[tier]['points'],
                             awarded_at=datetime.datetime.utcnow()
                         )
                         session.add(new_ach)
                         new_achievements.append(new_ach)
                         
-                        # Отправляем уведомление пользователю
+                        # Отправляем уведомление
                         await self._notify_user(user_id, achievement_type, tier)
                 
                 await session.commit()
