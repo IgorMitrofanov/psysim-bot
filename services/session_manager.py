@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from database.models import Session
 from database.models import Tariff, TariffType, Session, Order
-from database.crud import get_sessions_count_in_quota_period, get_user_by_id, get_telegram_id_by_user_id
+from database.crud import get_user_by_id, get_telegram_id_by_user_id
 from keyboards.builder import main_menu
 from texts.common import BACK_TO_MENU_TEXT
 from config import logger 
@@ -15,8 +15,8 @@ from config import config
 from asyncio import Lock
 from core.persones.persona_loader import PersonaLoader
 from core.reports.supervision_report_builder import SupervisionReportBuilder
-from services.achievements import AchievementSystem
-from database.models import AchievementType
+from core.reports.supervision_report_builder_low_cost import SimpleSupervisionReportBuilder
+
 
 # --- Менеджер сессий ---
 # Осуществляет управление сессиями: начало, окончание, нотификация юзера, хранение данных сессии и их запись в БД
@@ -161,7 +161,7 @@ class SessionManager:
                 if self.session_ended.get(user_id, False):
                     return False
 
-                # Получаем сессию с явным указанием на необходимость обновления
+                # Получаем сессию с явным указанием на необходимости обновления
                 stmt = select(Session).where(
                     Session.id == session_id,
                     Session.user_id == user_id
@@ -173,6 +173,12 @@ class SessionManager:
                     
                     if not session:
                         logger.warning(f"Session {session_id} not found for user {user_id}")
+                        return False
+                    
+                    # Получаем информацию о тарифе пользователя
+                    user = await get_user_by_id(db_session, user_id)
+                    if not user:
+                        logger.warning(f"User {user_id} not found")
                         return False
                     
                     # Подготовка данных для отчета
@@ -191,29 +197,83 @@ class SessionManager:
                     report_tokens = 0
                     telegram_id = await get_telegram_id_by_user_id(db_session, user_id)
                     
-                    # Достаточно длинный процесс, как бы сигнализиовать пользователю, что бот не завис?
-                    await self.bot.send_message(
-                                telegram_id,
-                                "<i>Генерация супервизорского отчета по сессии...</i>",
-                                parse_mode="HTML"
-                            )
+                    # Создаем задачу для анимации точек
+                    dots_task = None
+                    status_message = None
                     
+                    async def update_loading_message():
+                        nonlocal status_message
+                        dots = ["", ".", "..", "..."]
+                        i = 0
+                        while True:
+                            try:
+                                if not status_message:
+                                    status_message = await self.bot.send_message(
+                                        telegram_id,
+                                        f"<i>Генерация супервизорского отчета по сессии{dots[i]}</i>",
+                                        parse_mode="HTML"
+                                    )
+                                else:
+                                    await self.bot.edit_message_text(
+                                        f"<i>Генерация супервизорского отчета по сессии{dots[i]}</i>",
+                                        chat_id=telegram_id,
+                                        message_id=status_message.message_id,
+                                        parse_mode="HTML"
+                                    )
+                                
+                                i = (i + 1) % len(dots)
+                                await asyncio.sleep(0.5)  # Интервал обновления
+                            except Exception as e:
+                                logger.warning(f"Error updating loading message: {e}")
+                                break
+
                     if session.persona_name:
                         try:
-                            report_builder = SupervisionReportBuilder(
-                                persona_loader=self.persona_loader,
-                                session_history=session_history
-                            )
-                            report_text, report_tokens = await report_builder.generate_report(session.persona_name)
-                            logger.info(f"Generated supervision report for session {session_id}, tokens used: {report_tokens}")
+                            # Запускаем анимацию перед генерацией отчета
+                            dots_task = asyncio.create_task(update_loading_message())
+                            
+                            if user.active_tariff in [TariffType.PRO, TariffType.UNLIMITED]:
+                                report_builder = SupervisionReportBuilder(
+                                    persona_loader=self.persona_loader,
+                                    session_history=session_history
+                                )
+                                report_text, report_tokens = await report_builder.generate_report(session.persona_name)
+                                logger.info(f"Generated full supervision report for session {session_id}, tokens used: {report_tokens}")
+                            else:
+                                report_builder = SimpleSupervisionReportBuilder(
+                                    persona_loader=self.persona_loader,
+                                    session_history=session_history
+                                )
+                                report_text, report_tokens = await report_builder.generate_report(session.persona_name)
+                                logger.info(f"Generated low-cost supervision report for session {session_id}, tokens used: {report_tokens}")
                         except Exception as e:
                             logger.error(f"Error generating supervision report: {e}")
-                        
+                            raise
+                        finally:
+                            # Останавливаем анимацию в любом случае
+                            if dots_task:
+                                dots_task.cancel()
+                                try:
+                                    await dots_task
+                                except asyncio.CancelledError:
+                                    pass
+                            
+                            # Удаляем сообщение о загрузке, если оно было отправлено
+                            if status_message:
+                                try:
+                                    await self.bot.delete_message(
+                                        chat_id=telegram_id,
+                                        message_id=status_message.message_id
+                                    )
+                                except Exception as e:
+                                    logger.warning(f"Error deleting loading message: {e}")
+                    
                     # Обновляем данные сессии
                     history = self.message_history.get(user_id, {})
                     session.ended_at = datetime.utcnow()
                     session.is_active = False
                     session.report_text = report_text
+                    
                     # Отправляем отчет пользователю, если он сгенерирован
                     if report_text:
                         try:
@@ -233,6 +293,7 @@ class SessionManager:
                             logger.info(f"Report sent to user {user_id} in {len(report_chunks)} parts")
                         except Exception as e:
                             logger.error(f"Error sending report: {e}")
+                    
                     try:
                         session.user_messages = json.dumps(history.get('user_messages', []), ensure_ascii=False)
                         session.bot_messages = json.dumps(history.get('bot_messages', []), ensure_ascii=False)
@@ -243,6 +304,7 @@ class SessionManager:
                         session.bot_messages = "[]"
                     
                     session.tokens_spent = history.get('tokens_spent', 0) + report_tokens
+                    
                     # Устанавливаем persona_id если есть имя персоны
                     if session.persona_name:
                         # Получаем персону из кэша или базы данных
@@ -252,13 +314,6 @@ class SessionManager:
                             logger.debug(f"Set persona_id={session.persona_id} for session {session_id}")
                         else:
                             logger.warning(f"Persona '{session.persona_name}' not found for session {session_id}")
-                    
-                    try:
-                        await db_session.commit()
-                    except Exception as e:
-                        logger.error(f"Commit failed: {e}")
-                        await db_session.rollback()
-                        return False
                     
                     try:
                         await db_session.commit()
@@ -280,7 +335,9 @@ class SessionManager:
                         except asyncio.CancelledError:
                             pass
                         del self.active_checks[user_id]
+                    
                     await asyncio.sleep(1) # Небольшая пауза перед отправкой уведомления
+                    
                     # Отправляем уведомление
                     try:
                         await self._check_session_achievements(user_id, db_session, session)
