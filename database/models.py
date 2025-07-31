@@ -95,7 +95,6 @@ class AchievementType(PyEnum):
     FEEDBACK_CONTRIBUTOR = "feedback_contributor" # оставить отзыв, баг репорт или предложение
     NIGHT_OWL = "night_owl" # ночные сессии
     WEEKEND_WARRIOR = "weekend_warrior" # сессии в выходные
-    EMOTION_MASTER = "emotion_master" # мастер эмоций
     TIME_TRAVELER = "time_traveler" # сессии в разное время (утро, день, вечер, ночь)
     REFERRAL_MASTER = "referral_master" # приглашение пользователей (5+)
 

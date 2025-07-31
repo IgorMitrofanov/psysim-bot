@@ -9,9 +9,7 @@ from database.crud import (
 )
 from datetime import datetime
 from aiogram import Bot
-from logging import getLogger
-
-logger = getLogger(__name__)
+from config import logger
 
 
 async def process_referral_code(session: AsyncSession, code: str) -> User | None:

@@ -133,7 +133,7 @@ class SupervisionReportBuilder:
         telegram_html = f"""
         <b>Супервизорский отчёт по клиенту {self.persona_name}</b>\n\n
         <b>Общая характеристика сессии:</b>\n{general_char}\n\n
-        <b>Сильные стороны работы:</b>\n{''.join(f'• {item}\n' for item in strengths)}\n
+        <b>Сильные и слабые стороны работы:</b>\n{''.join(f'• {item}\n' for item in strengths)}\n
         <b>Ключевые наблюдения:</b>\n{''.join(f'• {item}\n' for item in observations)}\n
         <b>Зоны для дальнейшей проработки:</b>\n{''.join(f'• {item}\n' for item in areas_for_work)}\n
         <b>Риски:</b>\n{''.join(f'• {item}\n' for item in risks)}\n\n
@@ -188,7 +188,7 @@ class SupervisionReportBuilder:
     async def _generate_strengths(self, transcript: str) -> Tuple[List[str], int]:
         """Identify therapeutic strengths in the session."""
         system_prompt = """
-        Ты супервизор, анализирующий работу терапевта. Выдели сильные стороны работы терапевта в этой сессии.
+        Ты супервизор, анализирующий работу терапевта. Выдели сильные и слабые стороны работы терапевта в этой сессии.
         Обрати внимание на:
         - Контейнирование эмоций
         - Удержание границ

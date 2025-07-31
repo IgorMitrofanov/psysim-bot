@@ -60,7 +60,7 @@ def session_confirm_menu():
 
 def profile_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💰 Пополнить баланс", callback_data="my_achievements")],
+        # [InlineKeyboardButton(text="💰 Пополнить баланс", callback_data="my_achievements")], # совершенно не нужно
         [InlineKeyboardButton(text="📦 Приобрести подписку", callback_data="buy")],
         [InlineKeyboardButton(text="📊 Мои сессии и отчёты", callback_data="my_sessions")],
         [InlineKeyboardButton(text="🤝 Партнерская пограмма", callback_data="referral")],

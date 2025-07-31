@@ -15,6 +15,8 @@ class Config:
     SESSION_LENGTH_MINUTES = os.getenv("SESSION_LENGTH_MINUTES")
     WARNING_BEFORE_END_MINUTES = int(os.getenv("WARNING_BEFORE_END_MINUTES", 5))
     LOG_LEVEL = int(os.getenv("LOG_LEVEL", 20))  # 20 = INFO, 10 = DEBUG
+    PAYMENT_SHOP_ID = int(os.getenv("PAYMENT_SHOP_ID"))
+    PAYMENT_SECRET_KEY = os.getenv("PAYMENT_SECRET_KEY")
 
 
 config = Config()

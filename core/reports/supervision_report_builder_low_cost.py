@@ -73,7 +73,7 @@ class SimpleSupervisionReportBuilder:
         - Темп и глубину раскрытия клиента
         - Уровень безопасности в сессии
         
-        2. Сильные стороны работы терапевта (3-5 пунктов)
+        2. Сильные и слабые стороны работы терапевта (3-5 пунктов)
         - Контейнирование эмоций
         - Удержание границ
         - Подход к раннему опыту
@@ -107,7 +107,7 @@ class SimpleSupervisionReportBuilder:
         [ОБЩАЯ ХАРАКТЕРИСТИКА]
         <текст характеристики>
         
-        [СИЛЬНЫЕ СТОРОНЫ]
+        [СИЛЬНЫЕ И СЛАБЫЕ СТОРОНЫ]
         - Пункт 1
         - Пункт 2
         - ...
@@ -161,7 +161,7 @@ class SimpleSupervisionReportBuilder:
                 
             if line.startswith('[') and line.endswith(']'):
                 current_section = line[1:-1].lower()
-                if current_section == 'сильные стороны':
+                if current_section == 'сильные и слабые стороны':
                     current_section = 'strengths'
                 elif current_section == 'наблюдения':
                     current_section = 'observations'
@@ -193,7 +193,7 @@ class SimpleSupervisionReportBuilder:
         telegram_html = f"""
         <b>Супервизорский отчёт по клиенту {self.persona_name}</b>\n\n
         <b>Общая характеристика сессии:</b>\n{general_char}\n\n
-        <b>Сильные стороны работы:</b>\n{''.join(f'• {item}\n' for item in strengths)}\n
+        <b>Сильные и слабые стороны работы:</b>\n{''.join(f'• {item}\n' for item in strengths)}\n
         <b>Ключевые наблюдения:</b>\n{''.join(f'• {item}\n' for item in observations)}\n
         <b>Зоны для дальнейшей проработки:</b>\n{''.join(f'• {item}\n' for item in areas_for_work)}\n
         <b>Риски:</b>\n{''.join(f'• {item}\n' for item in risks)}\n\n

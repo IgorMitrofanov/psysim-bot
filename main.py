@@ -98,7 +98,7 @@ async def main():
     # Фоновая задача по проверке подписок
     asyncio.create_task(check_subscriptions_expiry(bot, sessionmaker))
     
-    achievement_system = AchievementSystem(bot, engine=engine)
+    achievement_system = AchievementSystem(bot, sessionmaker=sessionmaker)
     session_manager = SessionManager(bot, engine=engine, achievement_system=achievement_system)
     dp['session_manager'] = session_manager
     dp['achievement_system'] = achievement_system

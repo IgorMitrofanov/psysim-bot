@@ -109,6 +109,8 @@ async def handle_voice_message(
         try:
             # Получаем файл с сервера Telegram
             file_info = await bot.get_file(message.voice.file_id)
+            
+            # создать папку если ее нет
 
             # Уникальное имя временного файла
             tmp_path = f"./tmp/{uuid4().hex}.ogg"
@@ -526,7 +528,6 @@ async def process_messages_after_delay(
                         logger.debug(f"Persona decided to disengage | session_id={session_id} | user_id={user_id}")
                         await asyncio.sleep(1)
                         await bot.send_message(chat_id=message.chat.id, text="<i>Персонаж решил уйти...</i>")
-                        await asyncio.sleep(1)
                         await end_session_cleanup(message, state, session, session_manager)
                 finally:
                     typing_task.cancel()
