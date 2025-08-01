@@ -123,11 +123,11 @@ async def session_confirm_handler(
                 user_id=db_user.id,
                 resistance=resistance,
                 emotion=emotion,
-                decisioner=decisioner,
-                responser=responser,
+                decisioner=decisioner.to_dict(),
+                responser=responser.to_dict(),
                 meta_history=meta_history,
-                salter=salter,
-                humanizator=humanizator,
+                salter=salter.to_dict(),
+                humanizator=humanizator.to_dict(),
                 total_tokens=total_tokens
             )
             # Сообщение о начале сессии

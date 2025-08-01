@@ -13,6 +13,9 @@ from services.achievements import AchievementSystem
 from pathlib import Path
 import aiohttp
 
+from aiogram.fsm.storage.redis import RedisStorage, Redis
+from redis.asyncio import ConnectionPool
+
 from aiogram.types import BotCommand
 
 async def set_default_commands(bot: Bot):
@@ -81,8 +84,19 @@ async def main():
         await create_default_tariffs(session)
         
     bot = Bot(token=config.BOT_TOKEN, default=DEFAULT_BOT_PROPERTIES)  
-    dp = Dispatcher(storage=MemoryStorage()) # заменить на реддис например
-
+    
+    redis_pool = ConnectionPool.from_url(
+    config.REDDIS_HOST,
+    port=config.REDDIS_PORT,
+    db=0,
+    password=config.REDDIS_PASSWORD,
+    decode_responses=True
+    )
+    redis = Redis(connection_pool=redis_pool)
+    storage = RedisStorage(redis=redis)
+    
+    
+    dp = Dispatcher(storage=storage)
     
     # Запускаем миграцию персонажей перед стартом бота # обновлние 0.0.0p
     from migrate_personas import migrate_personas
@@ -103,15 +117,13 @@ async def main():
     dp['session_manager'] = session_manager
     dp['achievement_system'] = achievement_system
     
-    
-    
     for router in routers:
         logger.debug(f"router {router.name} init")
         dp.include_router(router)
     
     try:
         logger.info("Start polling")
-        await dp.start_polling(bot)
+        await dp.start_polling(bot, skip_updates=False)
     finally:
         logger.info("terminate database process")
         await session_manager.cleanup()

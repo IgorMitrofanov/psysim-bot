@@ -86,12 +86,11 @@ async def random_session_handler(
         user_id=db_user.id,
         resistance=resistance,
         emotion=emotion,
-        decisioner=decisioner,
-        responser=responser,
-        format="Текст",
+        decisioner=decisioner.to_dict(),
+        responser=responser.to_dict(),
         meta_history=meta_history,
-        salter=salter,
-        humanizator=humanizator,
+        salter=salter.to_dict(),
+        humanizator=humanizator.to_dict(),
         total_tokens=total_tokens
     )
 

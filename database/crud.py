@@ -2,11 +2,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from .models import User, Referral
-from sqlalchemy.exc import NoResultFound
 from database.models import Session
 from sqlalchemy import func
-from datetime import datetime, timedelta
-import json
 
 
 async def get_user(session: AsyncSession, telegram_id: int) -> User | None:
@@ -26,27 +23,6 @@ async def get_telegram_id_by_user_id(session: AsyncSession, user_id: int) -> int
     result = await session.execute(stmt)
     row = result.first()
     return row[0] if row else None
-
-async def get_user_by_referral_code(session: AsyncSession, code: str) -> User | None:
-    stmt = select(User).where(User.referral_code == code)
-    result = await session.execute(stmt)
-    return result.scalar_one_or_none()
-
-async def get_sessions_count_in_quota_period(
-    db_session: AsyncSession,
-    user_id: int,
-    period_days: int
-) -> int:
-    """Возвращает количество сессий пользователя за указанный период"""
-    period_start = datetime.utcnow() - timedelta(days=period_days)
-    
-    result = await db_session.execute(
-        select(func.count(Session.id))
-        .where(Session.user_id == user_id)
-        .where(Session.started_at >= period_start)
-    )
-    
-    return result.scalar() or 0
 
 async def count_user_sessions(db: AsyncSession, user_id: int) -> int:
     result = await db.execute(

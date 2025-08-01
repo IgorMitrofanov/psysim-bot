@@ -258,3 +258,21 @@ class PersonaDecisionLayer:
         if not self.recent_decisions:
             return "нет данных"
         return "\n".join(f"{i+1}. {d}" for i, d in enumerate(self.recent_decisions))
+    
+    def to_dict(self):
+        return {
+            'persona_data': self.persona_data,
+            'resistance_level': self.resistance_level,
+            'emotional_state': self.emotional_state,
+            'recent_decisions': self.recent_decisions
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        instance = cls(
+            data['persona_data'],
+            data['resistance_level'],
+            data['emotional_state']
+        )
+        instance.recent_decisions = data.get('recent_decisions', [])
+        return instance

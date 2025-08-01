@@ -18,11 +18,9 @@ from sqlalchemy import select
 from aiogram.fsm.state import State, StatesGroup
 from texts.subscription_texts import get_tariff_menu_text
 from keyboards.builder import profile_keyboard, subscription_keyboard
+from states import PaymentStates
 
 router = Router(name="payments")
-
-class PaymentStates(StatesGroup):
-    WAITING_PAYMENT = State()
 
 @router.callback_query(lambda c: c.data == "buy")
 async def buy_tariff_menu(callback: types.CallbackQuery, session: AsyncSession):
@@ -75,11 +73,12 @@ async def buy_tariff_with_payment(
             return
 
         # Формируем данные для платежа
-        price_rub = tariff.price / 100
+        price_rub = tariff.price / 100 # тарифы у нас в копейках, в чеке должно быть в рублях
         provider_data = config.provider_data_template
         provider_data["receipt"]["items"][0]["description"] = f"Подписка «{tariff.display_name}»"
         provider_data["receipt"]["items"][0]["amount"]["value"] = f"{price_rub:.2f}"
         
+        # А LabeledPrice должен содержать стоимость в минимальной единице валюты (копейки)
         prices = [LabeledPrice(label=tariff.display_name, amount=tariff.price)]
         
         # Сохраняем данные в состоянии

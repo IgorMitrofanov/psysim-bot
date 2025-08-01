@@ -170,3 +170,18 @@ class PersonaSalterLayer:
         )
         
         return response
+    
+    def to_dict(self):
+        return {
+            'persona_data': self.persona_data,
+            'resistance_level': self.resistance_level,
+            'emotional_state': self.emotional_state
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(
+            data['persona_data'],
+            data['resistance_level'],
+            data['emotional_state']
+        )

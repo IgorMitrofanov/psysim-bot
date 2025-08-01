@@ -38,3 +38,21 @@ class PersonaResponseLayer:
         else:
             self.main_history.append({"role": "assistant", "content": " ".join(msg)})
         logger.info(f"[AI-response-layer] Main history updated, new history: {self.main_history}")
+        
+    def to_dict(self):
+        return {
+            'persona_data': self.persona_data,
+            'resistance_level': self.resistance_level,
+            'emotional_state': self.emotional_state,
+            'main_history': self.main_history
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        instance = cls(
+            data['persona_data'],
+            data['resistance_level'],
+            data['emotional_state']
+        )
+        instance.main_history = data.get('main_history', [])
+        return instance

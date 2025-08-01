@@ -156,7 +156,7 @@ async def subscription_keyboard_when_sessions_left(session: AsyncSession) -> Inl
             button_text = "⚫ " + button_text
         
         buttons.append(
-            [InlineKeyboardButton(text=button_text, callback_data=f"activate_{tariff.name.value}")]
+            [InlineKeyboardButton(text=button_text, callback_data=f"buy_tariff_{tariff.name.value}")]
         )
     
     buttons.append([InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_main")])

@@ -1,17 +1,17 @@
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine, and_, or_
-from typing import Dict, List, Optional, Any
+
+from typing import Dict, List, Any
 import datetime
-from enum import Enum
-import logging
 from collections import defaultdict
 from database.models import Achievement, User, Session, AchievementType, AchievementTier, AchievementProgress, Referral, Feedback
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from config import logger
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func, extract
 import asyncio
 import sqlalchemy.exc
+
+from .achievement_config import ach_config, ach_names
+
+from config import logger
 
 class AchievementSystem:
     def __init__(self, bot, sessionmaker):
@@ -21,67 +21,7 @@ class AchievementSystem:
         self.retry_delay = 0.1
         
         # Конфигурация достижений
-        self.achievement_config = {
-            AchievementType.FIRST_SESSION: {
-                AchievementTier.BRONZE: {'required': 1, 'points': 10}
-            },
-            AchievementType.SESSION_COUNT: {
-                AchievementTier.BRONZE: {'required': 5, 'points': 20},
-                AchievementTier.SILVER: {'required': 20, 'points': 50},
-                AchievementTier.GOLD: {'required': 50, 'points': 100},
-                AchievementTier.PLATINUM: {'required': 100, 'points': 200}
-            },
-            AchievementType.HIGH_RESISTANCE: {
-                AchievementTier.BRONZE: {'required': 3, 'points': 30},
-                AchievementTier.SILVER: {'required': 12, 'points': 70},
-                AchievementTier.GOLD: {'required': 25, 'points': 150}
-            },
-            AchievementType.MONTHLY_CHALLENGE: {
-                AchievementTier.BRONZE: {'required': 5, 'points': 30},
-                AchievementTier.SILVER: {'required': 10, 'points': 70},
-                AchievementTier.GOLD: {'required': 20, 'points': 150}
-            },
-            AchievementType.EMOTIONAL_EXPLORER: {
-                AchievementTier.BRONZE: {'required': 2, 'points': 20},
-                AchievementTier.SILVER: {'required': 4, 'points': 50},
-                AchievementTier.GOLD: {'required': 6, 'points': 100}
-            },
-            AchievementType.PERSONA_COLLECTOR: {
-                AchievementTier.BRONZE: {'required': 3, 'points': 30},
-                AchievementTier.SILVER: {'required': 7, 'points': 70},
-                # AchievementTier.GOLD: {'required': 12, 'points': 150} # больше 7 пока нет
-            },
-            AchievementType.THERAPY_MARATHON: {
-                AchievementTier.BRONZE: {'required': 3, 'points': 30},
-                AchievementTier.SILVER: {'required': 7, 'points': 70},
-                AchievementTier.GOLD: {'required': 30, 'points': 200}
-            },
-            AchievementType.FEEDBACK_CONTRIBUTOR: {
-                AchievementTier.BRONZE: {'required': 1, 'points': 10},
-                AchievementTier.SILVER: {'required': 3, 'points': 30},
-                AchievementTier.GOLD: {'required': 10, 'points': 100}
-            },
-            AchievementType.NIGHT_OWL: {
-                AchievementTier.BRONZE: {'required': 3, 'points': 20},
-                AchievementTier.SILVER: {'required': 10, 'points': 50},
-                AchievementTier.GOLD: {'required': 20, 'points': 100}
-            },
-            AchievementType.WEEKEND_WARRIOR: {
-                AchievementTier.BRONZE: {'required': 3, 'points': 20},
-                AchievementTier.SILVER: {'required': 10, 'points': 50},
-                AchievementTier.GOLD: {'required': 20, 'points': 100}
-            },
-            AchievementType.TIME_TRAVELER: {
-                AchievementTier.BRONZE: {'required': 4, 'points': 30},
-                AchievementTier.SILVER: {'required': 10, 'points': 70},
-                AchievementTier.GOLD: {'required': 30, 'points': 150}
-            },
-            AchievementType.REFERRAL_MASTER: {
-                AchievementTier.BRONZE: {'required': 1, 'points': 20},
-                AchievementTier.SILVER: {'required': 5, 'points': 100},
-                AchievementTier.GOLD: {'required': 10, 'points': 200}
-            }
-        }
+        self.achievement_config = ach_config
         
         logger.info("AchievementSystem initialized with configuration for %d achievement types", len(self.achievement_config))
     
@@ -243,21 +183,8 @@ class AchievementSystem:
 
     def _get_achievement_name(self, achievement_type: AchievementType) -> str:
         """Возвращает читаемое название достижения"""
-        names = {
-            AchievementType.FIRST_SESSION: "Первая сессия",
-            AchievementType.SESSION_COUNT: "Количество сессий",
-            AchievementType.HIGH_RESISTANCE: "Высокое сопротивление",
-            AchievementType.MONTHLY_CHALLENGE: "Ежемесячный челлендж",
-            AchievementType.EMOTIONAL_EXPLORER: "Исследователь эмоций",
-            AchievementType.PERSONA_COLLECTOR: "Коллекционер персон",
-            AchievementType.THERAPY_MARATHON: "Марафон терапии",
-            AchievementType.FEEDBACK_CONTRIBUTOR: "Контрибьютор обратной связи",
-            AchievementType.NIGHT_OWL: "Ночная сова",
-            AchievementType.WEEKEND_WARRIOR: "Воитель выходного дня",
-            AchievementType.TIME_TRAVELER: "Путешественник во времени",
-            AchievementType.REFERRAL_MASTER: "Мастер приглашений"
-        }
-        return names.get(achievement_type, "Достижение")
+        
+        return ach_names.get(achievement_type, "Достижение")
     
     def _get_tier_name(self, tier: AchievementTier) -> str:
         """Возвращает читаемое название уровня достижения"""
@@ -636,7 +563,7 @@ class AchievementSystem:
                     .group_by(func.date(Session.started_at))
                     .order_by(func.date(Session.started_at).asc())
                 )
-                dates = [d[0] for d in result.all()]
+                dates = [datetime.datetime.strptime(d[0], '%Y-%m-%d').date() for d in result.all()]
                 logger.debug(
                     "Retrieved %d unique session dates for user %d",
                     len(dates), user_id

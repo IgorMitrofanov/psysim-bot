@@ -43,11 +43,10 @@ class PersonaHumanizationLayer:
                 Ты эксперт по адаптации текста под стиль речи. Сохраняй смысл, меняй форму. 
                 Делай текст, в зависимости от портерета личности. Иногда можно писать с маленькой буквы и т д. 
                 Учитывай, какие языки знает персонаж. 
-                Можно разделять ответ через || для эффекта живой речи. 
+                Можно разделять ответ через || для эффекта живой речи. Никогда не начинай реплики с символов как `, -, '. Не используй markdown. 
                 Не делай много разделей слишком часто, чтобы разговор казался живым. 
                 Следи за историей сообщений.
                 """
-                # 25.07.2025 удалил "ты в переписке асистент, терапет - юзер." Давно не соответствует действительности, у нас есть "чистая" история для мета-ИИ
 
                 refined_response, tokens_used = await call_llm_for_meta_ai(
                     system_prompt=system_msg,
@@ -62,3 +61,18 @@ class PersonaHumanizationLayer:
             except Exception as e:
                 logger.error(f"[AI-humanization-layer] Error refining response: {str(e)}", exc_info=True)
                 return raw_response, 0
+            
+    def to_dict(self):
+        return {
+            'persona_data': self.persona_data,
+            'resistance_level': self.resistance_level,
+            'emotional_state': self.emotional_state
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(
+            data['persona_data'],
+            data['resistance_level'],
+            data['emotional_state']
+        )
