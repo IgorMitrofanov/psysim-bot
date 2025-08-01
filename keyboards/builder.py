@@ -124,7 +124,7 @@ async def subscription_keyboard(session: AsyncSession) -> InlineKeyboardMarkup:
             button_text = "⚫ " + button_text
         
         buttons.append(
-            [InlineKeyboardButton(text=button_text, callback_data=f"activate_{tariff.name.value}")]
+            [InlineKeyboardButton(text=button_text, callback_data=f"buy_tariff_{tariff.name.value}")]
         )
     
     # Добавляем кнопку возврата

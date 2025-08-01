@@ -6,14 +6,14 @@ from .session import random_router
 from .profile import router as profile_router
 from .referal import router as referal_router
 from .help import router as help_router
-from .subscription import router as sub_router
+from .payments import router as payments_router
 from .not_implemented import router as not_implemented_router
 from .my_sessions import router as my_sessions_router
 from .my_achievements import router as my_achievements_router
 
 routers = [
     not_implemented_router,
-    sub_router,
+    payments_router,
     common_router,
     interaction_router,
     confirm_router,

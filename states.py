@@ -15,3 +15,6 @@ class MainMenu(StatesGroup):
 class ProfileStates(StatesGroup):
     viewing_sessions = State()
     viewing_session_details = State()
+
+class PaymentStates(StatesGroup):
+    WAITING_PAYMENT = State()
