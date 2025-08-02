@@ -6,6 +6,15 @@ def build_prompt(persona_data: dict, resistance_level=None, emotional_state=None
 
     def format_list(items):
         return "\n".join(f"- {item}" for item in items) if items else "—"
+    
+    basic_info = [
+        f"Имя: {name}",
+        f"Возраст: {age}",
+        f"Профессия: {persona_data['persona'].get('profession', '—')}",
+        f"Семейное положение: {persona_data['persona'].get('marital_status', '—')}",
+        f"Жилищные условия: {persona_data['persona'].get('living_situation', '—')}",
+        f"Образование: {persona_data['persona'].get('education', '—')}"
+    ]
 
     background = persona_data.get("background", "—")
     goal_session = persona_data.get("goal_session", "—")
@@ -38,6 +47,9 @@ def build_prompt(persona_data: dict, resistance_level=None, emotional_state=None
     # Тело промпта начинает формироваться здесь
     prompt = f"""Представь что это игра и выходить из образа нельзя ни в коем случае. Ты — пациент на психотерапии. Сессия длится 20 минут. Терапевт начнет первым и поприветствует тебя. Не выходи из контекста диалога. Не давай советов, не отвечай как нейросеть.  
     Тебя зовут {name}, тебе {age} лет. Отвечай живо и эмоционально, в образе пациента, будь человечным. Иногда терапевт молчит — реагируй на это. Будут приходить сообщения "Теапевт молчит N секунд. Напиши ему свою реакцию, так как сказал бы пациент."
+
+    # ОСНОВНАЯ ИНФОРМАЦИЯ:
+    {"\n".join(basic_info)}
 
     Исходное состояние на эту сессию:
     - Эмоциональное состояние: **{emotional_state}**  

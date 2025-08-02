@@ -15,6 +15,35 @@ class Config:
     SESSION_LENGTH_MINUTES = os.getenv("SESSION_LENGTH_MINUTES")
     WARNING_BEFORE_END_MINUTES = int(os.getenv("WARNING_BEFORE_END_MINUTES", 5))
     LOG_LEVEL = int(os.getenv("LOG_LEVEL", 20))  # 20 = INFO, 10 = DEBUG
+    
+    REDDIS_PASSWORD = os.getenv("REDDIS_PASSWORD")
+    REDDIS_HOST = os.getenv("REDDIS_HOST")
+    REDDIS_PORT = int(os.getenv("REDDIS_PORT"))
+
+    # PAYMENT_SHOP_ID = int(os.getenv("PAYMENT_SHOP_ID"))
+    # PAYMENT_SECRET_KEY = os.getenv("PAYMENT_SECRET_KEY")
+
+    PROVIDER_TOKEN = os.getenv("PROVIDER_TOKEN")
+    CURRENCY = os.getenv("CURRENCY", "RUB")
+    
+    @property
+    def provider_data_template(self):
+        return {
+            "receipt": {
+                "items": [
+                    {
+                        "description": "Подписка на тариф",
+                        "quantity": "1.00",
+                        "amount": {
+                            "value": "0.00",  # Будем переопределять
+                            "currency": self.CURRENCY
+                        },
+                        "vat_code": 1
+                    }
+                ]
+            }
+        }
+
 
 
 config = Config()

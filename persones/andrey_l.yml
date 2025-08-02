@@ -1,9 +1,9 @@
 persona:
   name: Андрей Л.
   age: 26
-  gender: male
+  gender: мужской
   occupation: младший финансовый аналитик
-  marital_status: single, длительных отношений не было
+  marital_status: одинок, длительных отношений не было
   living_situation: снимает комнату в Москве (двое соседей)
   education: бакалавр экономики — РЭУ им. Плеханова
   socioeconomic_status: нижний средний

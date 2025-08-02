@@ -6,7 +6,7 @@ def calculate_typing_delay(text: str) -> float:
     # Базовое время набора
     base_time = len(text) / base_speed
     
-    # Добавляем паузы между предложениями
+    # Паузы между предложениями
     sentence_count = text.count('.') + text.count('!') + text.count('?')
     sentence_pauses = sentence_count * random.uniform(0.3, 1.2)
     

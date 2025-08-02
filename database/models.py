@@ -84,15 +84,43 @@ class Session(Base):
     persona = relationship("Persona", back_populates="sessions")
 
 
+class AchievementType(PyEnum):
+    FIRST_SESSION = "first_session" # первая сессия
+    SESSION_COUNT = "session_count" # количество сессий
+    HIGH_RESISTANCE = "high_resistance" # сессии с высоким сопротивлением
+    MONTHLY_CHALLENGE = "monthly_challenge" # сессий в месяц
+    EMOTIONAL_EXPLORER = "emotional_explorer" # исследование эмоций
+    PERSONA_COLLECTOR = "persona_collector" # коллекция персон
+    THERAPY_MARATHON = "therapy_marathon" # марафон терапии
+    FEEDBACK_CONTRIBUTOR = "feedback_contributor" # оставить отзыв, баг репорт или предложение
+    NIGHT_OWL = "night_owl" # ночные сессии
+    WEEKEND_WARRIOR = "weekend_warrior" # сессии в выходные
+    TIME_TRAVELER = "time_traveler" # сессии в разное время (утро, день, вечер, ночь)
+    REFERRAL_MASTER = "referral_master" # приглашение пользователей (5+)
+
+class AchievementTier(PyEnum):
+    BRONZE = "bronze"
+    SILVER = "silver"
+    GOLD = "gold"
+    PLATINUM = "platinum"
+
 class Achievement(Base):
     __tablename__ = "achievements"
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"))
-    badge_code = Column(String)
+    badge_code = Column(Enum(AchievementType))  # Тип достижения
+    tier = Column(Enum(AchievementTier))  # Уровень достижения 
     awarded_at = Column(DateTime, default=datetime.datetime.utcnow)
-
+    progress = Column(Integer, default=100)  # Прогресс (0-100%)
+    points = Column(Integer)  # Количество очков за достижение 
+    
     user = relationship("User", back_populates="achievements")
 
+class AchievementProgress(Base):
+    __tablename__ = 'achievement_progress'
+    user_id = Column(Integer, ForeignKey('users.id'), primary_key=True)
+    achievement_type = Column(Enum(AchievementType), primary_key=True)
+    progress = Column(Integer, default=0)
 
 class Referral(Base):
     __tablename__ = "referrals"
@@ -157,8 +185,11 @@ class Persona(Base):
     age = Column(Integer)
     gender = Column(String, nullable=True)
     profession = Column(String, nullable=True)
-    appearance = Column(String, nullable=True)
-    short_description = Column(String, nullable=True)
+
+    marital_status = Column(String, nullable=True)
+    living_situation = Column(String, nullable=True)
+    education = Column(String, nullable=True)
+    
     
     # Background and history
     background = Column(Text)

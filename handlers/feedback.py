@@ -2,6 +2,8 @@ import logging
 from aiogram import Router, types
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
+from services.achievements import AchievementSystem
+from database.models import AchievementType
 
 from states import MainMenu
 from keyboards.builder import (
@@ -81,7 +83,7 @@ async def acknowledge_user_feedback(message: types.Message, state: FSMContext, s
     await state.set_state(MainMenu.choosing)
 
 @router.message(MainMenu.feedback)
-async def handle_feedback(message: types.Message, state: FSMContext, session: AsyncSession):
+async def handle_feedback(message: types.Message, state: FSMContext, session: AsyncSession, achievement_system: AchievementSystem):
     db_user = await get_user(session, telegram_id=message.from_user.id)
     # Сохраняем отзыв в БД
     feedback = Feedback(
@@ -95,13 +97,16 @@ async def handle_feedback(message: types.Message, state: FSMContext, session: As
     session.add(feedback)
     await session.commit()
     
+    # Проверяем достижения
+    await achievement_system.check_feedback_achievements(db_user.id)
+    
     await acknowledge_user_feedback(
         message, state,
         THANK_YOU_FEEDBACK
     )
 
 @router.message(MainMenu.suggestion)
-async def handle_suggestion(message: types.Message, state: FSMContext, session: AsyncSession):
+async def handle_suggestion(message: types.Message, state: FSMContext, session: AsyncSession, achievement_system: AchievementSystem):
     db_user = await get_user(session, telegram_id=message.from_user.id)
     # Сохраняем предложение в БД
     feedback = Feedback(
@@ -115,13 +120,16 @@ async def handle_suggestion(message: types.Message, state: FSMContext, session: 
     session.add(feedback)
     await session.commit()
     
+    # Проверяем достижения
+    await achievement_system.check_feedback_achievements(db_user.id)
+    
     await acknowledge_user_feedback(
         message, state,
         THANK_YOU_SUGGESTION
     )
 
 @router.message(MainMenu.error_report)
-async def handle_error(message: types.Message, state: FSMContext, session: AsyncSession):
+async def handle_error(message: types.Message, state: FSMContext, session: AsyncSession, achievement_system: AchievementSystem):
     db_user = await get_user(session, telegram_id=message.from_user.id)
     # Сохраняем баг-репорт в БД
     feedback = Feedback(
@@ -134,6 +142,9 @@ async def handle_error(message: types.Message, state: FSMContext, session: Async
     session.add(db_user)  # Обновляем последнюю активность пользователя
     session.add(feedback)
     await session.commit()
+    
+    # Проверяем достижения
+    await achievement_system.check_feedback_achievements(db_user.id)
     
     await acknowledge_user_feedback(
         message, state,

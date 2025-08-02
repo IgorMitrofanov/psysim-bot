@@ -16,6 +16,7 @@ from services.referral_manager import (
     create_new_user_with_referral,
     handle_referral_bonus
 )
+from services.achievements import AchievementSystem, AchievementType
 import datetime
 
 
@@ -23,7 +24,7 @@ router = Router(name="common")
 
 
 @router.message(Command("start"))
-async def cmd_start(message: types.Message, state: FSMContext, session: AsyncSession):
+async def cmd_start(message: types.Message, state: FSMContext, session: AsyncSession, achievement_system: AchievementSystem):
     try:
         from_user = message.from_user
         logger.debug(f"Start command from: {from_user.id}")
@@ -35,6 +36,10 @@ async def cmd_start(message: types.Message, state: FSMContext, session: AsyncSes
         if len(text_parts) > 1 and text_parts[1].startswith("ref_"):
             referral_code = text_parts[1].split("_")[1]
             referrer = await process_referral_code(session, referral_code)
+            
+            # Если реферер найден, проверяем достижения для пригласившего
+            if referrer:
+                await achievement_system.check_referral_achievements(referrer.id)
 
         # Получаем или создаем пользователя
         db_user = await get_user(session, telegram_id=from_user.id)
@@ -46,6 +51,12 @@ async def cmd_start(message: types.Message, state: FSMContext, session: AsyncSes
 
             if referrer:
                 await handle_referral_bonus(session, db_user, referrer, message.bot)
+                
+                # Проверяем достижение "Мастер приглашений" для реферера
+                await achievement_system.check_achievements(
+                    referrer.id, 
+                    AchievementType.REFERRAL_MASTER
+                )
         else:
             logger.debug(f"User already exists: {db_user.id}")
             is_new_user = db_user.is_new

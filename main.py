@@ -9,8 +9,13 @@ from handlers import routers
 import ssl
 from middlewares.db import DBSessionMiddleware
 from services.session_manager import SessionManager
+from services.achievements import AchievementSystem
+from services.timer_manager import TimerManager
 from pathlib import Path
 import aiohttp
+
+from aiogram.fsm.storage.redis import RedisStorage, Redis
+from redis.asyncio import ConnectionPool
 
 from aiogram.types import BotCommand
 
@@ -80,8 +85,19 @@ async def main():
         await create_default_tariffs(session)
         
     bot = Bot(token=config.BOT_TOKEN, default=DEFAULT_BOT_PROPERTIES)  
-    dp = Dispatcher(storage=MemoryStorage()) # заменить на реддис например
-
+    
+    redis_pool = ConnectionPool.from_url(
+    config.REDDIS_HOST,
+    port=config.REDDIS_PORT,
+    db=0,
+    password=config.REDDIS_PASSWORD,
+    decode_responses=True
+    )
+    redis = Redis(connection_pool=redis_pool)
+    storage = RedisStorage(redis=redis)
+    
+    
+    dp = Dispatcher(storage=storage)
     
     # Запускаем миграцию персонажей перед стартом бота # обновлние 0.0.0p
     from migrate_personas import migrate_personas
@@ -93,13 +109,16 @@ async def main():
     dp.message.middleware(DBSessionMiddleware(sessionmaker))
     dp.callback_query.middleware(DBSessionMiddleware(sessionmaker))
     dp.startup.register(on_startup)
+    
     # Фоновая задача по проверке подписок
     asyncio.create_task(check_subscriptions_expiry(bot, sessionmaker))
-    # Инициализация менеджера сессий
-    session_manager = SessionManager(bot, admin_engine=engine)
+    
+    achievement_system = AchievementSystem(bot, sessionmaker=sessionmaker)
+    session_manager = SessionManager(bot, engine=engine, achievement_system=achievement_system)
+    timer_manager = TimerManager()
     dp['session_manager'] = session_manager
-    
-    
+    dp['achievement_system'] = achievement_system
+    dp['timer_manager'] = timer_manager
     
     for router in routers:
         logger.debug(f"router {router.name} init")
@@ -107,7 +126,7 @@ async def main():
     
     try:
         logger.info("Start polling")
-        await dp.start_polling(bot)
+        await dp.start_polling(bot, skip_updates=False)
     finally:
         logger.info("terminate database process")
         await session_manager.cleanup()

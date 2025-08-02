@@ -51,32 +51,21 @@ def session_emotion_menu():
         [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_resistance")]
     ])
 
-def session_format_menu():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💬 Текст", callback_data="format_text")],
-        [InlineKeyboardButton(text="🎧 Аудио", callback_data="not_implemented")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_emotion")]
-    ])
-
 def session_confirm_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🟣 Начать сессию", callback_data="session_confirm_start")],
         [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_main")]
     ])
     
-def session_menu():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔚 Завершить сессию", callback_data="not_implemented")],
-    ])   
 
 def profile_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💰 Пополнить баланс", callback_data="not_implemented")],
+        # [InlineKeyboardButton(text="💰 Пополнить баланс", callback_data="my_achievements")], # совершенно не нужно
         [InlineKeyboardButton(text="📦 Приобрести подписку", callback_data="buy")],
         [InlineKeyboardButton(text="📊 Мои сессии и отчёты", callback_data="my_sessions")],
         [InlineKeyboardButton(text="🤝 Партнерская пограмма", callback_data="referral")],
-        [InlineKeyboardButton(text="🎯 Мои цели", callback_data="not_implemented")],
-        [InlineKeyboardButton(text="🏅 Мои достижения", callback_data="not_implemented")],
+        # [InlineKeyboardButton(text="🎯 Мои цели", callback_data="not_implemented")], # пока уберу
+        [InlineKeyboardButton(text="🏅 Мои достижения", callback_data="my_achievements")],
         [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_main")],
     ])
     
@@ -135,7 +124,7 @@ async def subscription_keyboard(session: AsyncSession) -> InlineKeyboardMarkup:
             button_text = "⚫ " + button_text
         
         buttons.append(
-            [InlineKeyboardButton(text=button_text, callback_data=f"activate_{tariff.name.value}")]
+            [InlineKeyboardButton(text=button_text, callback_data=f"buy_tariff_{tariff.name.value}")]
         )
     
     # Добавляем кнопку возврата
@@ -167,7 +156,7 @@ async def subscription_keyboard_when_sessions_left(session: AsyncSession) -> Inl
             button_text = "⚫ " + button_text
         
         buttons.append(
-            [InlineKeyboardButton(text=button_text, callback_data=f"activate_{tariff.name.value}")]
+            [InlineKeyboardButton(text=button_text, callback_data=f"buy_tariff_{tariff.name.value}")]
         )
     
     buttons.append([InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_main")])
@@ -180,7 +169,7 @@ def persona_selection_menu(personas: list[str]) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text=f"🧍 {p}", callback_data=f"persona_{p}")]
         for p in personas
     ]
-    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_format")])
+    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_emotion")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def sessions_keyboard(sessions: list, page: int = 0, per_page: int = 5):

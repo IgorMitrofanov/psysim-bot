@@ -181,6 +181,15 @@ class PersonaDecisionLayer:
         """Строит детализированный промпт для принятия решения."""
         persona = persona_data.get('persona', {})
         
+        basic_info = [
+        f"Имя: {persona_data['persona'].get('name', '—')}",
+        f"Возраст: {persona_data['persona'].get('age', '—')}",
+        f"Профессия: {persona_data['persona'].get('profession', '—')}",
+        f"Семейное положение: {persona_data['persona'].get('marital_status', '—')}",
+        f"Жилищные условия: {persona_data['persona'].get('living_situation', '—')}",
+        f"Образование: {persona_data['persona'].get('education', '—')}"
+        ]
+        
         components = {
             'history': self._format_history(history),
             'symptoms': self._format_symptoms(persona_data),
@@ -196,6 +205,9 @@ class PersonaDecisionLayer:
         # Психологический профиль пациента
         Имя: {persona.get('name', 'Неизвестный')}, возраст: {persona.get('age', '?')} лет
         Биография: {persona_data.get('background', 'Нет информации')}
+        
+        # ОСНОВНАЯ ИНФОРМАЦИЯ:
+        {"\n".join(basic_info)}
         
         ## Текущее состояние:
         - Эмоциональное: {emotional_state} (триггеры: {components['triggers']})
@@ -246,3 +258,21 @@ class PersonaDecisionLayer:
         if not self.recent_decisions:
             return "нет данных"
         return "\n".join(f"{i+1}. {d}" for i, d in enumerate(self.recent_decisions))
+    
+    def to_dict(self):
+        return {
+            'persona_data': self.persona_data,
+            'resistance_level': self.resistance_level,
+            'emotional_state': self.emotional_state,
+            'recent_decisions': self.recent_decisions
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        instance = cls(
+            data['persona_data'],
+            data['resistance_level'],
+            data['emotional_state']
+        )
+        instance.recent_decisions = data.get('recent_decisions', [])
+        return instance

@@ -36,15 +36,16 @@ class PersonaLoader:
             return None
     
     def _convert_to_legacy_format(self, persona: Persona) -> Dict:
-        """Convert database Persona object to legacy YAML format"""
+        """Convert database Persona object to legacy format"""
         return {
             "persona": {
                 "name": persona.name,
                 "age": persona.age,
                 "gender": persona.gender,
                 "profession": persona.profession,
-                "appearance": persona.appearance,
-                "short_description": persona.short_description,
+                "marital_status": persona.marital_status,
+                "living_situation": persona.living_situation,
+                "education": persona.education,
                 "id": persona.id
             },
             "background": persona.background,
