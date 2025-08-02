@@ -1,4 +1,4 @@
-from handlers.session.utils.timer_and_lock import session_lock
+from handlers.session.utils.lock import session_lock
 from aiogram import types
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,14 +8,15 @@ from database.crud import get_user
 from states import MainMenu
 from services.session_manager import SessionManager
 from config import logger
-from .timer_and_lock import SafeTimer
+from services.timer_manager import TimerManager
 
 
 async def end_session_cleanup(
     message: types.Message,
     state: FSMContext,
     session: AsyncSession,
-    session_manager: SessionManager
+    session_manager: SessionManager,
+    timer_manager: TimerManager
 ):
     """Функция для корректного завершения сессии с гарантированным сбросом таймеров и состояния"""
     data = await state.get_data()
@@ -32,29 +33,15 @@ async def end_session_cleanup(
                 await asyncio.sleep(5)
                 data = await state.get_data()
 
-            # Отменяем все таймеры и очищаем их из состояния
-            timer_names = ['inactivity_timer', 'processing_timer']
-            cancelled_timers = 0
-            for timer_name in timer_names:
-                timer:SafeTimer = None
-                if timer := data.get(timer_name):
-                    logger.debug(f"[SESSION INTERATION] Cancelling {timer_name} | session_id={session_id} | user_id={user_id}")
-                    try:
-                        if not timer.completed and not timer.cancelled:
-                            await timer.cancel()
-                            cancelled_timers += 1
-                    except Exception as e:
-                        logger.error(f"[SESSION INTERATION] Error cancelling {timer_name}: {e} | session_id={session_id} | user_id={user_id}")
-
-            # Очищаем ссылки на таймеры в состоянии
+            # Отменяем все таймеры через менеджер
+            logger.debug(f"[SESSION INTERATION] Cancelling all timers via manager | session_id={session_id} | user_id={user_id}")
+            await timer_manager.cancel_all_timers(session_id)
+            
+            # Очищаем состояние
             await state.update_data({
-                'inactivity_timer': None,
-                'processing_timer': None,
-                'message_queue': deque(),
+                'message_queue': [],
                 'is_bot_responding': False
             })
-            
-            logger.debug(f"[SESSION INTERATION] Cancelled {cancelled_timers}/{len(timer_names)} timers | session_id={session_id} | user_id={user_id}")
             
             # Завершаем сессию
             db_user = await get_user(session, telegram_id=message.from_user.id)

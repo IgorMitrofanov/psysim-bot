@@ -1,4 +1,4 @@
-from aiogram import Router, types
+from aiogram import Bot, Router, types
 from aiogram.fsm.context import FSMContext
 from states import MainMenu
 from datetime import datetime
@@ -6,10 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.crud import get_user
 import asyncio
 from services.session_manager import SessionManager
+from services.timer_manager import TimerManager, SafeTimer
 from collections import deque
 
 # utils session module
-from .utils import SafeTimer, session_lock
+from .utils import session_lock
 from .utils import end_session_cleanup
 from .utils import process_messages_after_delay, check_inactivity
 from .utils import PROCESSING_DELAY, INACTIVITY_DELAY
@@ -25,7 +26,8 @@ async def session_interaction_handler(
     state: FSMContext,
     session: AsyncSession,
     session_manager: SessionManager,
-    bot
+    bot: Bot,
+    timer_manager: TimerManager
 ):
     """
     Обрабатывает сообщения пользователя в активной сессии.
@@ -76,12 +78,15 @@ async def session_interaction_handler(
             return
         
         # Добавляем сообщение в очередь
-        message_queue = data.get("message_queue", deque())
+        message_queue = deque(data.get("message_queue", []))
         message_queue.append(message.text)
         
         # Создаем новые таймеры
         inactivity_timer = SafeTimer("inactivity", state)
         processing_timer = SafeTimer("processing", state)
+        
+        timer_manager.add_timer(session_id, 'inactivity_timer', inactivity_timer)
+        timer_manager.add_timer(session_id, 'processing_timer', processing_timer)
         
         # Обновляем состояние
         await state.update_data(
@@ -91,7 +96,9 @@ async def session_interaction_handler(
         )
         
         # Запускаем таймеры
-        await processing_timer.start(PROCESSING_DELAY, process_messages_after_delay, state, message, session, session_manager, PROCESSING_DELAY, bot)
-        await inactivity_timer.start(INACTIVITY_DELAY, check_inactivity, state, message, INACTIVITY_DELAY, session, session_manager, bot)
+        await processing_timer.start(PROCESSING_DELAY, process_messages_after_delay, state, message, session, session_manager, PROCESSING_DELAY, bot, timer_manager)
+        await inactivity_timer.start(INACTIVITY_DELAY, check_inactivity, state, message, INACTIVITY_DELAY, session, session_manager, bot, timer_manager)
         
         logger.debug(f"[SESSION INTERATION] Timers started | session_id={session_id} | user_id={user_id}")
+        
+        

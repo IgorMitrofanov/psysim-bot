@@ -10,6 +10,7 @@ import ssl
 from middlewares.db import DBSessionMiddleware
 from services.session_manager import SessionManager
 from services.achievements import AchievementSystem
+from services.timer_manager import TimerManager
 from pathlib import Path
 import aiohttp
 
@@ -114,8 +115,10 @@ async def main():
     
     achievement_system = AchievementSystem(bot, sessionmaker=sessionmaker)
     session_manager = SessionManager(bot, engine=engine, achievement_system=achievement_system)
+    timer_manager = TimerManager()
     dp['session_manager'] = session_manager
     dp['achievement_system'] = achievement_system
+    dp['timer_manager'] = timer_manager
     
     for router in routers:
         logger.debug(f"router {router.name} init")

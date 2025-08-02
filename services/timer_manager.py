@@ -1,49 +1,10 @@
-from contextlib import asynccontextmanager
+from typing import Dict, Optional
 import asyncio
-import time
-from uuid import uuid4
-from typing import Optional
+from collections import defaultdict
 from aiogram.fsm.context import FSMContext
 from config import logger
-
-
-@asynccontextmanager
-async def session_lock(state: FSMContext):
-    """
-    Контекстный менеджер для безопасной блокировки сессии.
-    Используется для предотвращения одновременного доступа к критическим секциям кода.
-    """
-    lock_id = str(uuid4())[:8]
-    data = await state.get_data()
-    session_id = data.get("session_id")
-    user_id = data.get("user_id")
     
-    logger.debug(f"[LOCK {lock_id}] TRYING TO ACQUIRE | session_id={session_id} | user_id={user_id}")
     
-    lock_timeout = 3  # Максимальное время ожидания блокировки
-    start_time = time.time()
-    
-    while True:
-        data = await state.get_data()
-        if not data.get('session_locked'):
-            break
-        if time.time() - start_time > lock_timeout:
-            logger.error(f"[LOCK {lock_id}] TIMEOUT EXCEEDED | session_id={session_id} | user_id={user_id}")
-            break
-        await asyncio.sleep(0.1)
-    
-    await state.update_data(session_locked=True)
-    logger.debug(f"[LOCK {lock_id}] ACQUIRED | session_id={session_id} | user_id={user_id}")
-    
-    try:
-        yield
-    except Exception as e:
-        logger.error(f"[LOCK {lock_id}] ERROR IN LOCKED SECTION: {e} | session_id={session_id} | user_id={user_id}")
-        raise
-    finally:
-        await state.update_data(session_locked=False)
-        logger.debug(f"[LOCK {lock_id}] RELEASED | session_id={session_id} | user_id={user_id}")
-
 class SafeTimer:
     """Абстрактный класс для безопасного таймера с возможностью отмены и проверки состояния сессии"""
     def __init__(self, name: str, state: FSMContext):
@@ -122,3 +83,37 @@ class SafeTimer:
             logger.debug(f"[TIMER {self.name.upper()}] CANCELLATION CONFIRMED | session_id={self.session_id} | user_id={self.user_id}")
         except Exception as e:
             logger.error(f"[TIMER {self.name.upper()}] ERROR DURING CANCELLATION: {e} | session_id={self.session_id} | user_id={self.user_id}")
+            
+            
+class TimerManager:
+    _instance = None
+    _timers: Dict[str, Dict[str, SafeTimer]] = defaultdict(dict)
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    @classmethod
+    def add_timer(cls, session_id: str, timer_name: str, timer: SafeTimer):
+        cls._timers[session_id][timer_name] = timer
+    
+    @classmethod
+    def get_timer(cls, session_id: str, timer_name: str) -> Optional[SafeTimer]:
+        return cls._timers[session_id].get(timer_name)
+    
+    @classmethod
+    async def cancel_timer(cls, session_id: str, timer_name: str):
+        if timer := cls._timers[session_id].get(timer_name):
+            await timer.cancel()
+            del cls._timers[session_id][timer_name]
+    
+    @classmethod
+    async def cancel_all_timers(cls, session_id: str):
+        for timer_name, timer in list(cls._timers[session_id].items()):
+            await timer.cancel()
+            del cls._timers[session_id][timer_name]
+    
+    @classmethod
+    def has_timer(cls, session_id: str, timer_name: str) -> bool:
+        return timer_name in cls._timers[session_id]
